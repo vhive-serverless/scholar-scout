@@ -1,0 +1,20 @@
+email:
+  username: ${GMAIL_USERNAME}
+  password: ${GMAIL_PASSWORD}
+
+slack:
+  api_token: ${SLACK_API_TOKEN}
+
+perplexity:
+  api_key: ${PPLX_API_KEY}
+
+research_topics:
+  - name: "LLM Inference"
+    keywords: ["llm", "inference", "serving", "latency", "throughput"]
+    slack_user: "@test_user"
+    description: "Research related to serving and optimizing LLM inference"
+  
+  - name: "Test Topic"
+    keywords: ["test"]
+    slack_user: "@test_user"
+    description: "Test research topic" 

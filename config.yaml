@@ -1,0 +1,25 @@
+email:
+  username: ${GMAIL_USERNAME}
+  password: ${GMAIL_APP_PASSWORD}
+
+slack:
+  api_token: "xoxb-your-slack-token"
+
+perplexity:
+  api_key: ${PPLX_API_KEY}
+
+research_topics:
+  - name: "Topic 1"
+    keywords: ["keyword1", "keyword2", "keyword3"]
+    slack_user: "@username1"
+    description: "Description of your first research topic"
+  
+  - name: "Topic 2"
+    keywords: ["keyword4", "keyword5", "keyword6"]
+    slack_user: "@username2"
+    description: "Description of your second research topic"
+  
+  - name: "Topic 3"
+    keywords: ["keyword7", "keyword8", "keyword9"]
+    slack_user: "@username3"
+    description: "Description of your third research topic" 
