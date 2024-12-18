@@ -1,0 +1,25 @@
+    email:
+      username: "jasonzhangsin@gmail.com"
+      password: "Zyx8260637"
+    
+    slack:
+      api_token: "xoxe.xoxp-1-Mi0yLTgwNTY1MTQxOTE2NjYtODA1MzY2Njc4NDIxMy04MDY2MjAyMDk2NzQxLTgwNjI0MzU0NTU4OTQtNmU4MGM0NmVkN2E4MGVhMDhlY2IwNDFlNjMzMTNmMGFmNTQ5NzgwODYxZTQ3MjcwYWM2MTY2ZjNkMjE1ZjgyZg"
+    
+    claude:
+      api_key: "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"
+    
+    research_topics:
+      - name: "LLM Inference"
+        keywords: ["llm", "inference", "serving", "latency", "throughput"]
+        slack_user: "@bill"
+        description: "Research related to serving and optimizing LLM inference, including latency optimization, throughput improvement, and deployment strategies"
+      
+      - name: "Serverless Computing"
+        keywords: ["serverless", "faas", "function-as-a-service", "cloud"]
+        slack_user: "@jenny"
+        description: "Research on serverless computing platforms, Function-as-a-Service (FaaS), and cloud-native architectures"
+      
+      - name: "Sustainable Computing"
+        keywords: ["green computing", "energy efficiency", "carbon footprint"]
+        slack_user: "@jim"
+        description: "Research on reducing the environmental impact of computing systems, including energy efficiency and carbon footprint reduction"
