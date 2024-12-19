@@ -14,7 +14,7 @@ research_topics:
     slack_user: "@test_user"
     description: "Research related to serving and optimizing LLM inference"
   
-  - name: "Test Topic"
-    keywords: ["test"]
+  - name: "Serverless systems"
+    keywords: ["serverless", "cloud", "edge", "edge computing", "cluster management", "virtualization", "hypervisor"]
     slack_user: "@test_user"
-    description: "Test research topic" 
+    description: "Research related to serverless systems"

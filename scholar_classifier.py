@@ -107,15 +107,10 @@ class ScholarClassifier:
             self.logger.error(f"Error connecting to Gmail: {e}")
             raise
 
-    def extract_papers_from_email(self, email_message):
-        """Extract papers from a Google Scholar alert email using Perplexity AI."""
-        print("\nDEBUG: Starting paper extraction")
-        print(f"DEBUG: Email subject: {email_message['subject']}")
-
-        if not self.pplx_client or not hasattr(self.pplx_client, 'chat'):
-            print("DEBUG: Perplexity client not properly initialized")
-            raise ValueError("Perplexity client not properly initialized. Check your API key.")
-
+    def extract_and_classify_papers(self, email_message):
+        """Extract papers from email and classify them in one API call."""
+        print("\nDEBUG: Starting paper extraction and classification")
+        
         if not email_message['subject'] or 'new articles' not in email_message['subject'].lower():
             print("DEBUG: Not a valid Google Scholar alert email")
             return []
@@ -123,17 +118,13 @@ class ScholarClassifier:
         # Get email content
         content = ""
         if email_message.is_multipart():
-            print("DEBUG: Processing multipart email")
             for part in email_message.walk():
-                content_type = part.get_content_type()
-                print(f"DEBUG: Found part with content type: {content_type}")
-                if content_type == "text/html":
+                if part.get_content_type() == "text/html":
                     html_content = part.get_payload(decode=True).decode()
                     soup = BeautifulSoup(html_content, 'html.parser')
                     content = soup.get_text('\n', strip=True)
                     break
         else:
-            print("DEBUG: Processing single part email")
             content = email_message.get_payload(decode=True).decode()
             if email_message.get_content_type() == 'text/html':
                 soup = BeautifulSoup(content, 'html.parser')
@@ -143,192 +134,96 @@ class ScholarClassifier:
             print("DEBUG: No content found")
             return []
 
-        print(f"DEBUG: Final content length: {len(content)}")
-        print(f"DEBUG: Content preview: {content[:500]}")
-
-        # Construct prompt for Perplexity
-        prompt = f"""Please parse this Google Scholar alert email and extract all papers mentioned. 
-For each paper, provide the title, authors, venue (if any), and abstract.
-Return the results as a JSON array where each paper has the following structure:
-{{
-    "title": "paper title",
-    "authors": ["author1", "author2"],
-    "venue": "conference/journal name",
-    "abstract": "paper abstract"
-}}
-
-Here's the email content:
-{content}
-
-Only return the JSON array, nothing else."""
-
-        try:
-            print("DEBUG: Sending request to Perplexity API")
-            response = self.pplx_client.chat.completions.create(
-                model="llama-3.1-sonar-small-128k-online",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            print("DEBUG: Got response from Perplexity API")
-            content = response.choices[0].message.content
-            print(f"DEBUG: Response content: {content[:200]}...")
-            
-            # Clean up markdown formatting if present
-            if content.startswith('```json'):
-                content = content.split('```json')[1]
-                if '```' in content:
-                    content = content.split('```')[0]
-            
-            # Remove any leading/trailing whitespace
-            content = content.strip()
-            
-            # Parse the JSON
-            papers_data = json.loads(content)
-            
-            # Convert to Paper objects
-            papers = [
-                Paper(
-                    title=paper['title'],
-                    authors=paper['authors'],
-                    abstract=paper.get('abstract', ''),
-                    venue=paper.get('venue', '')
-                )
-                for paper in papers_data
-            ]
-            
-            print(f"DEBUG: Extracted {len(papers)} papers")
-            for i, paper in enumerate(papers):
-                print(f"\nDEBUG: Paper {i+1}:")
-                print(f"Title: {paper.title}")
-                print(f"Authors: {', '.join(paper.authors)}")
-                print(f"Venue: {paper.venue}")
-                print(f"Abstract preview: {paper.abstract[:100]}...")
-            
-            return papers
-            
-        except Exception as e:
-            print(f"DEBUG: Error parsing with Perplexity: {str(e)}")
-            if "401" in str(e):
-                raise ValueError("Invalid Perplexity API key. Please check your configuration.")
-            raise
-
-    def _process_email(self, email_message) -> Tuple[str, str]:
-        """Process email to extract subject and body."""
-        subject = ""
-        body = ""
-
-        # Get subject
-        if email_message['subject']:
-            subject = decode_header(email_message['subject'])[0][0]
-            if isinstance(subject, bytes):
-                subject = subject.decode()
-
-        # Get body
-        if email_message.is_multipart():
-            for part in email_message.walk():
-                if part.get_content_type() == "text/plain":
-                    body = part.get_payload(decode=True).decode()
-                    break
-        else:
-            body = email_message.get_payload(decode=True).decode()
-
-        return subject, body
-
-    def classify_paper(self, paper: Paper) -> List[ResearchTopic]:
-        """Use AI to classify paper into relevant research topics."""
-        # Construct the prompt
+        # Construct topics description
         topics_description = "\n".join([
             f"- {topic.name}: {topic.description}" 
             for topic in self.topics
         ])
-        
-        prompt = f"""Please analyze this research paper and determine which of the following research topics it belongs to. A paper can belong to multiple topics if relevant.
+
+        # Combined prompt for extraction and classification
+        prompt = f"""Parse this Google Scholar alert email and for each paper:
+1. Extract the paper details
+2. Classify it according to the research topics below
 
 Research Topics:
 {topics_description}
 
-Paper Information:
-Title: {paper.title}
-Authors: {', '.join(paper.authors)}
-Abstract: {paper.abstract}
+Email content:
+{content}
 
-Please respond with a JSON array containing the names of the relevant topics. Include a topic only if you are confident it is relevant. For example:
-["LLM Inference", "Sustainable Computing"]
+Return a JSON array where each paper has this structure:
+{{
+    "title": "paper title",
+    "authors": ["author1", "author2"],
+    "venue": "conference/journal name or arxiv",
+    "link": "link to paper (if available)",
+    "abstract": "paper abstract or summary",
+    "relevant_topics": ["Topic1", "Topic2"]  // Only include confident matches
+}}
 
 Only return the JSON array, nothing else."""
 
+        print(f"DEBUG: Prompt: {prompt}")
         try:
             response = self.pplx_client.chat.completions.create(
                 model="llama-3.1-sonar-small-128k-online",
                 messages=[{"role": "user", "content": prompt}]
             )
             
-            # Parse the response
-            matched_topics = json.loads(response.choices[0].message.content)
+            content = response.choices[0].message.content.strip()
+            if content.startswith('```json'):
+                content = content.split('```json')[1].split('```')[0]
             
-            # Map topic names to ResearchTopic objects
-            return [
-                topic for topic in self.topics 
-                if topic.name in matched_topics
-            ]
+            papers_data = json.loads(content)
+            
+            results = []
+            for paper_data in papers_data:
+                paper = Paper(
+                    title=paper_data['title'],
+                    authors=paper_data['authors'],
+                    abstract=paper_data.get('abstract', ''),
+                    venue=paper_data.get('venue', ''),
+                    url=paper_data.get('link', '')
+                )
+                
+                relevant_topics = [
+                    topic for topic in self.topics 
+                    if topic.name in paper_data.get('relevant_topics', [])
+                ]
+                
+                results.append((paper, relevant_topics))
+
+            print(f"DEBUG: Results: {results}")
+            
+            return results
             
         except Exception as e:
-            self.logger.error(f"Error classifying paper with AI: {e}")
-            return []
-
-    def send_slack_notification(self, topic: ResearchTopic, paper: Paper):
-        """Send notification to appropriate Slack user."""
-        try:
-            message = (
-                f"🎯 *New Relevant Paper in {topic.name}*\n\n"
-                f"*Title:* {paper.title}\n"
-                f"*Authors:* {', '.join(paper.authors)}\n\n"
-                f"*Abstract:*\n{paper.abstract}\n\n"
-                f"*Why you might be interested:* This paper appears relevant to your work on {topic.name}."
-            )
-            
-            self.slack_client.chat_postMessage(
-                channel=topic.slack_user,  # This can be a user ID or channel
-                text=message,
-                blocks=[
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": message}
-                    }
-                ]
-            )
-            self.logger.info(f"Notification sent to {topic.slack_user} for topic {topic.name}")
-            
-        except SlackApiError as e:
-            self.logger.error(f"Error sending Slack notification: {e}")
+            print(f"DEBUG: Error in extraction and classification: {str(e)}")
+            raise
 
     def run(self, folder='"news &- papers/scholar"'):
         """Main execution loop."""
         try:
             mail = self.connect_to_gmail()
-            mail.select(folder)  # Allow specifying which folder to search
+            mail.select(folder)
             
-            # Search for unread emails from Google Scholar
             _, message_numbers = mail.search(None, 
                                           '(FROM "scholaralerts-noreply@google.com" UNSEEN)')
             
             self.logger.info(f"Searching in folder: {folder}")
             
             for num in message_numbers[0].split():
-                # Fetch email message
                 _, msg_data = mail.fetch(num, '(RFC822)')
                 email_body = msg_data[0][1]
                 email_message = email.message_from_bytes(email_body)
                 
-                # Extract paper information
-                paper = self.extract_paper_info(email_message)
+                # Extract and classify papers in one step
+                paper_results = self.extract_and_classify_papers(email_message)
                 
-                # Classify paper using AI
-                relevant_topics = self.classify_paper(paper)
-                
-                # Send notifications for each relevant topic
-                for topic in relevant_topics:
-                    self.send_slack_notification(topic, paper)
+                # Send notifications for each paper and its relevant topics
+                for paper, relevant_topics in paper_results:
+                    for topic in relevant_topics:
+                        self.send_slack_notification(topic, paper)
                 
                 # Mark email as read
                 # mail.store(num, '+FLAGS', '\\Seen')
