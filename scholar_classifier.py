@@ -38,6 +38,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import html2text
+import urllib.parse
 
 @dataclass
 class ResearchTopic:
@@ -55,39 +56,43 @@ class Paper:
     venue: str = ""
 
 class ScholarClassifier:
-    def __init__(self, config_path='config.yml', config_dict=None):
+    def __init__(self, config_file=None, config_dict=None):
+        """Initialize with either a config file path or a config dictionary."""
         # Set up logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            filename='scholar_notifications.log'
-        )
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)  # Set to DEBUG level
         
-        # Load configuration from either source
-        if config_dict is not None:
+        # Add a console handler if none exists
+        if not self.logger.handlers:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(message)s')
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
+
+        # Load configuration
+        if config_file:
+            with open(config_file) as f:
+                self.config = yaml.safe_load(f)
+        elif config_dict:
             self.config = config_dict
         else:
-            self.config = self._load_config(config_path)
+            raise ValueError("Either config_file or config_dict must be provided")
+
+        # Initialize topics
+        self.topics = self._init_research_topics()
         
-        # Initialize clients
+        # Initialize Perplexity client
+        self.pplx_client = OpenAI(
+            api_key=self.config['perplexity']['api_key'],
+            base_url="https://api.perplexity.ai",
+        )
+        
+        # Initialize Slack client
         self.slack_client = WebClient(token=self.config['slack']['api_token'])
-        self.pplx_client = OpenAI(api_key=self.config['perplexity']['api_key'], base_url="https://api.perplexity.ai")
-        
-        # Load research topics
-        self.topics = self._load_research_topics()
 
-    def _load_config(self, config_path: str) -> Dict:
-        """Load configuration from YAML file."""
-        try:
-            with open(config_path, 'r') as file:
-                return yaml.safe_load(file)
-        except Exception as e:
-            self.logger.error(f"Error loading configuration: {e}")
-            raise
-
-    def _load_research_topics(self) -> List[ResearchTopic]:
-        """Load research topics from configuration."""
+    def _init_research_topics(self):
+        """Initialize research topics from configuration."""
         topics = []
         for topic_config in self.config['research_topics']:
             topics.append(ResearchTopic(
@@ -138,77 +143,89 @@ class ScholarClassifier:
             print(f"Error extracting URLs: {str(e)}")
             return {}
 
-    def _extract_paper_metadata(self, html):
+    def _extract_paper_metadata(self, content):
         """Extract paper metadata from HTML content."""
-        try:
-            print("\nDEBUG: Parsing HTML content")
-            soup = BeautifulSoup(html, 'html.parser')
-            papers = []
+        self.logger.debug("Parsing HTML content")
+        soup = BeautifulSoup(content, 'html.parser')
+        papers = []
+        
+        # Find all paper entries (h3 tags)
+        title_links = soup.find_all('h3')
+        self.logger.debug(f"Found {len(title_links)} title links")
+        
+        for h3 in title_links:
+            link = h3.find('a')
+            if not link:  # Skip h3s without links
+                continue
             
-            # Find all paper entries (each paper is in an h3 followed by two divs)
-            title_links = soup.find_all('a', class_='gse_alrt_title')
-            print(f"Found {len(title_links)} title links")
+            # Get title and URL from the link
+            title = link.get_text(strip=True)
+            url = link.get('href', '')
             
-            for title_link in title_links:
-                # Get the h3 parent
-                h3 = title_link.find_parent('h3')
-                if not h3:
-                    print("No h3 parent found for title link")
-                    continue
+            self.logger.debug(f"\nProcessing paper: {title}")
+            self.logger.debug(f"Raw URL from href: {url}")
+            
+            # Clean up Google Scholar redirect URL to get actual paper URL
+            if url:
+                try:
+                    # Parse the URL and extract the 'url' parameter
+                    parsed = urllib.parse.urlparse(url)
+                    self.logger.debug(f"Parsed URL parts: {parsed}")
                     
-                # Extract title
-                title = title_link.get_text(strip=True)
-                print(f"\nFound paper title: {title}")
-                
-                # Get the next two divs after h3
-                author_div = h3.find_next('div')
-                abstract_div = author_div.find_next('div', class_='gse_alrt_sni') if author_div else None
-                
-                if not (author_div and abstract_div):
-                    print("Missing author or abstract div")
-                    continue
-                
-                # Extract author text (before the dash/hyphen)
-                author_text = author_div.get_text(strip=True)
-                print(f"Author text: {author_text}")
-                
-                if ' - ' in author_text:
-                    authors = author_text.split(' - ')[0]
-                elif ' – ' in author_text:  # em dash
-                    authors = author_text.split(' – ')[0]
-                else:
-                    authors = author_text
+                    params = urllib.parse.parse_qs(parsed.query)
+                    self.logger.debug(f"Parsed query parameters: {params}")
                     
-                # Clean up authors and split into list
-                authors = [a.strip() for a in authors.split(',') if a.strip()]
-                print(f"Extracted authors: {authors}")
+                    if 'url' in params:
+                        url = params['url'][0]  # Get the first URL if multiple exist
+                        url = urllib.parse.unquote(url)  # Decode the URL
+                        self.logger.debug(f"Extracted and decoded URL: {url}")
+                    else:
+                        self.logger.debug("No 'url' parameter found in query string")
+                        url = ''
+                except Exception as e:
+                    self.logger.error(f"Error extracting URL: {e}")
+                    self.logger.error(f"URL that caused error: {url}")
+                    url = ''
                 
-                # Extract abstract
-                abstract = abstract_div.get_text(strip=True)
-                print(f"Abstract length: {len(abstract)}")
-                
-                papers.append({
+            self.logger.debug(f"Final URL: {url}")
+            
+            # Get the next elements
+            current = h3
+            authors = ""
+            abstract = ""
+            
+            # Look for the next 2 divs (authors and abstract)
+            for i in range(2):
+                current = current.find_next('div')
+                if current:
+                    text = current.get_text(strip=True)
+                    if text:
+                        if i == 0:  # First div is authors
+                            authors = text
+                        else:  # Second div is abstract
+                            abstract = text
+            
+            # Only add if we found required content
+            if authors:  # At minimum we need authors
+                paper = {
                     'title': title,
-                    'authors': authors,
-                    'abstract': abstract
-                })
-                
-            print(f"\nExtracted {len(papers)} papers total")
-            return papers
+                    'authors': [authors],  # Keep as list for compatibility
+                    'abstract': abstract,
+                    'url': url
+                }
+                papers.append(paper)
             
-        except Exception as e:
-            print(f"Error parsing HTML: {str(e)}")
-            print("HTML content:", html[:200])  # Print start of HTML for debugging
-            return []
+        self.logger.debug(f"\nExtracted {len(papers)} papers total")
+        return papers
 
     def extract_and_classify_papers(self, email_message):
         """Extract papers from email and classify them according to research topics."""
-        print("\nDEBUG: Starting paper extraction and classification")
+        self.logger.info("\n=== Starting paper extraction and classification ===")
         
         content = self._get_email_content(email_message)
         papers = self._extract_paper_metadata(content)
         if not papers:
-            print("DEBUG: No papers found in email")
+            self.logger.info("No papers found in email")
             return []
         
         results = []
@@ -231,12 +248,12 @@ Return a JSON object with ONLY these fields:
 }}
 
 CRITICAL RULES:
-1. Return ONLY the JSON object
+1. Return ONLY the JSON object, NOTHING ELSE.
 2. Use venue rules exactly as specified
 3. Only include topics that clearly match the paper
 """
 
-            print(f"DEBUG: Prompt: {prompt}")
+            self.logger.debug(f"Generated prompt:\n{prompt}")
             try:
                 response = self.pplx_client.chat.completions.create(
                     model="llama-3.1-sonar-small-128k-online",
@@ -244,37 +261,54 @@ CRITICAL RULES:
                 )
                 
                 content = response.choices[0].message.content.strip()
-                if content.startswith('```json'):
-                    content = content.split('```json')[1].split('```')[0]
-                elif content.startswith('```'):
-                    content = content.split('```')[1].split('```')[0]
+                self.logger.debug(f"LLM response:\n{content}")
                 
-                papers_data = json.loads(content)
-                if not papers_data:
+                # Clean up JSON from markdown if present
+                if content.startswith('```json'):
+                    content = content.split('```json')[1].split('```')[0].strip()
+                elif content.startswith('```'):
+                    content = content.split('```')[1].split('```')[0].strip()
+                
+                paper_data = json.loads(content)
+                if not isinstance(paper_data, dict):
+                    self.logger.error(f"Unexpected response format: {type(paper_data)}")
                     continue
                     
-                paper_data = papers_data[0]  # We only expect one paper per iteration
-                
                 # Create Paper object using original paper data
                 paper_obj = Paper(
                     title=paper['title'],
-                    authors=paper['authors'],
+                    authors=[a.split(' - ')[0].strip() for a in paper['authors']],  # Clean author names
                     abstract=paper['abstract'],
-                    venue=paper_data.get('venue', ''),  # Only venue from LLM
-                    url=self._extract_paper_urls(content).get(paper['title'], '')
+                    venue=paper_data.get('venue', ''),
+                    url=paper['url']
                 )
                 
+                # Match topics exactly as defined in the prompt
                 relevant_topics = [
                     topic for topic in self.topics 
-                    if topic.name in paper_data.get('relevant_topics', [])
+                    if any(t.strip().lower() == topic.name.lower() for t in paper_data.get('relevant_topics', []))
                 ]
-                
-                results.append((paper_obj, relevant_topics))
 
-                print(f"DEBUG: Results: {results}")
+                # Also check if any topic appears in the list with its full description
+                relevant_topics.extend([
+                    topic for topic in self.topics 
+                    if any(t.strip().lower() == f"{topic.name.lower()}: {topic.description.lower()}" 
+                           for t in paper_data.get('relevant_topics', []))
+                ])
+
+                # Remove duplicates while preserving order
+                seen = set()
+                relevant_topics = [x for x in relevant_topics if not (x.name in seen or seen.add(x.name))]
+
+                results.append((paper_obj, relevant_topics))
+                self.logger.info(f"Successfully processed paper: {paper_obj.title}")
+                self.logger.info(f"Matched topics: {[t.name for t in relevant_topics]}")
+
             except Exception as e:
-                print(f"DEBUG: Error processing paper: {str(e)}")
+                self.logger.error(f"Error processing paper: {str(e)}")
                 continue
+
+            self.logger.debug(f"Processing results: {results}")
         
         return results
 
@@ -327,16 +361,21 @@ CRITICAL RULES:
 
     def _extract_papers_from_html(self, html):
         """Extract papers as plain text, just like reading an email."""
+        self.logger.debug("Parsing HTML content")
         soup = BeautifulSoup(html, 'html.parser')
         papers = []
         
         # Find all paper entries (h3 tags)
-        for h3 in soup.find_all('h3'):
+        title_links = soup.find_all('h3')
+        self.logger.debug(f"Found {len(title_links)} title links")
+        
+        for h3 in title_links:
             if not h3.find('a'):  # Skip h3s without links
                 continue
             
             # Get all text content from h3 (includes PDF tag if present)
             title = h3.get_text(strip=True)
+            self.logger.debug(f"\nFound paper title: {title}")
             
             # Get the next elements
             current = h3
@@ -354,30 +393,31 @@ CRITICAL RULES:
             if len(paper_text) > 1:  # At least title and one more element
                 papers.append('\n'.join(paper_text))
         
+        self.logger.debug(f"\nExtracted {len(papers)} papers total")
         return '\n\n'.join(papers)
 
     def _get_email_content(self, email_message):
         """Extract HTML content from email message."""
-        print("\nDEBUG: Email structure:")
-        print(f"Is multipart: {email_message.is_multipart()}")
-        print(f"Content type: {email_message.get_content_type()}")
+        self.logger.debug("Email structure:")
+        self.logger.debug(f"Is multipart: {email_message.is_multipart()}")
+        self.logger.debug(f"Content type: {email_message.get_content_type()}")
         
         content = ""
         if email_message.is_multipart():
             for part in email_message.walk():
                 if part.get_content_type() == "text/html":
-                    print("Found HTML part in multipart message")
+                    self.logger.debug("Found HTML part in multipart message")
                     content = part.get_payload(decode=True).decode('utf-8', errors='replace')
                     break
         else:
-            print("Trying direct payload")
+            self.logger.debug("Processing single-part message")
             payload = email_message.get_payload(decode=True)
             if payload:
                 content = payload.decode('utf-8', errors='replace')
         
-        print(f"Extracted content length: {len(content)}")
+        self.logger.debug(f"Extracted content length: {len(content)}")
         if len(content) > 0:
-            print("First 200 chars of content:", content[:200])
+            self.logger.debug(f"First 200 chars of content: {content[:200]}")
         
         return content
 
@@ -449,7 +489,7 @@ if __name__ == "__main__":
     """
     
     # Using config file
-    classifier = ScholarClassifier(config_path='config.yml')
+    classifier = ScholarClassifier(config_file='config.yml')
 
     # Using config dictionary
     config = {
