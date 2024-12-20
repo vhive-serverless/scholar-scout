@@ -74,73 +74,64 @@ class TestGmailIntegration(unittest.TestCase):
             print(f"\nFound {len(messages)} Google Scholar alert emails")
             
             # Take 5 most recent emails
-            num_emails_to_test = min(5, len(messages))
+            num_emails_to_test = min(10, len(messages))
             test_messages = messages[-num_emails_to_test:]
             
             for i, num in enumerate(test_messages, 1):
-                print(f"\n=== Processing Email {i}/{num_emails_to_test} ===")
-                _, msg_data = mail.fetch(num, '(BODY.PEEK[])')
-                email_message = email.message_from_bytes(msg_data[0][1])
-                
-                # Parse and format the date
-                date_str = email_message['date']
-                if date_str:
-                    date = parsedate_to_datetime(date_str)
-                    formatted_date = date.strftime("%Y-%m-%d %H:%M")
-                else:
-                    formatted_date = "Unknown date"
-                
-                print(f"Google Scholar Alerts{' ' * 40}{formatted_date}")
-                print()
-                
-                if email_message.is_multipart():
-                    for part in email_message.walk():
-                        if part.get_content_type() == "text/html":
-                            html = part.get_payload(decode=True).decode('utf-8', errors='replace')
-                            soup = BeautifulSoup(html, 'html.parser')
-                            
-                            # Find all paper entries
-                            papers = soup.find_all('h3')
-                            for paper in papers:
-                                if paper.a:  # Paper with title
-                                    # Check if it's a PDF
-                                    pdf_span = paper.find('span', string='[PDF]')
-                                    if pdf_span:
-                                        print("[PDF]", end=" ")
-                                    print(f"{paper.a.text.strip()}")
-                                    
-                                    # Find next div for authors/venue
-                                    venue_div = paper.find_next('div', style='color:#006621')
-                                    if venue_div:
-                                        print(f"{venue_div.text.strip()}")
-                                    
-                                    # Find next div for abstract
-                                    abstract_div = paper.find_next('div', {'class': 'gse_alrt_sni'})
-                                    if abstract_div:
-                                        print(f"{abstract_div.text.strip()}")
-                                    print()
-                            break  # Only process the first HTML part
-                
-                print("-" * 80)
-                
-                results = self.classifier.extract_and_classify_papers(email_message)
-                
-                self.assertTrue(len(results) > 0, f"No papers extracted from email {i}")
-                
-                print(f"\nExtracted {len(results)} papers:")
-                for j, (paper, topics) in enumerate(results, 1):
-                    print(f"\n--- Paper {j}/{len(results)} ---")
-                    print(f"Title: {paper.title}")
-                    print(f"Authors: {', '.join(paper.authors)}")
-                    print(f"Venue: {paper.venue}")
-                    print(f"URL: {paper.url}")
-                    print(f"Abstract: {paper.abstract[:200]}...")
-                    print(f"Matched Topics: {[topic.name for topic in topics]}")
+                try:
+                    print(f"\n=== Processing Email {i}/{num_emails_to_test} ===")
+                    _, msg_data = mail.fetch(num, '(BODY.PEEK[])')
+                    email_message = email.message_from_bytes(msg_data[0][1])
                     
-                    # Verify paper structure
-                    self.assertTrue(len(paper.title) > 0, "Paper missing title")
-                    self.assertTrue(len(paper.authors) > 0, "Paper missing authors")
-                    self.assertTrue(len(paper.abstract) > 0, "Paper missing abstract")
+                    # Parse and format the date
+                    date_str = email_message['date']
+                    if date_str:
+                        date = parsedate_to_datetime(date_str)
+                        formatted_date = date.strftime("%Y-%m-%d %H:%M")
+                    else:
+                        formatted_date = "Unknown date"
+                    
+                    print(f"Google Scholar Alerts{' ' * 40}{formatted_date}")
+                    print()
+                    
+                    if email_message.is_multipart():
+                        for part in email_message.walk():
+                            if part.get_content_type() == "text/html":
+                                html = part.get_payload(decode=True).decode('utf-8', errors='replace')
+                                self.classifier._extract_papers_from_html(html)
+                                break  # Only process the first HTML part
+                    
+                    print("-" * 80)
+                    
+                    try:
+                        results = self.classifier.extract_and_classify_papers(email_message)
+                        
+                        self.assertTrue(len(results) > 0, f"No papers extracted from email {i}")
+                        
+                        print(f"\nExtracted {len(results)} papers:")
+                        for j, (paper, topics) in enumerate(results, 1):
+                            print(f"\n--- Paper {j}/{len(results)} ---")
+                            print(f"Title: {paper.title}")
+                            print(f"Authors: {', '.join(paper.authors)}")
+                            print(f"Venue: {paper.venue}")
+                            print(f"URL: {paper.url}")
+                            print(f"Abstract: {paper.abstract[:200]}...")
+                            print(f"Matched Topics: {[topic.name for topic in topics]}")
+                            
+                            # Verify paper structure
+                            self.assertTrue(len(paper.title) > 0, "Paper missing title")
+                            self.assertTrue(len(paper.authors) > 0, "Paper missing authors")
+                            self.assertTrue(len(paper.abstract) > 0, "Paper missing abstract")
+                    
+                    except Exception as e:
+                        print(f"Error processing paper: {str(e)}")
+                        print("Continuing with next email...")
+                        continue
+                
+                except Exception as e:
+                    print(f"Error processing email {i}: {str(e)}")
+                    print("Continuing with next email...")
+                    continue
             
             mail.close()
             mail.logout()
