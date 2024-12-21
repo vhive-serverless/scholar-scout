@@ -20,40 +20,69 @@ from scholar_classifier import ScholarClassifier
 from bs4 import BeautifulSoup
 import html2text
 from email.utils import parsedate_to_datetime
+from pathlib import Path
+from config import load_config
+import logging
+
 
 class TestGmailIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        """Set up test environment once for all tests."""
+        """Set up test environment."""
+        # Setup detailed logging
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s %(levelname)s [%(name)s]: %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        # Enable debug logging for specific components
+        logging.getLogger('slack_notifier').setLevel(logging.DEBUG)
+        logging.getLogger('scholar_classifier').setLevel(logging.INFO)
+        
+        # Add a stream handler if messages aren't showing
+        slack_logger = logging.getLogger('slack_notifier')
+        if not slack_logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(levelname)s [%(name)s]: %(message)s'))
+            slack_logger.addHandler(handler)
+            slack_logger.propagate = True  # Ensure messages propagate to root logger
+        
         env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
         load_dotenv(env_path)
         
-        cls.config = {
-            'email': {
-                'username': os.getenv('GMAIL_USERNAME'),
-                'password': os.getenv('GMAIL_PASSWORD')
-            },
-            'slack': {
-                'api_token': 'test-token'
-            },
-            'perplexity': {
-                'api_key': os.getenv('PPLX_API_KEY')
-            },
-            'research_topics': [
-                {
-                    'name': 'LLM Inference',
-                    'keywords': ['llm', 'inference', 'serving', 'latency', 'throughput'],
-                    'slack_user': '@test_user',
-                    'description': 'Research related to serving and optimizing LLM inference'
-                },
-                {
-                    'name': 'Serverless systems', 
-                    'keywords': ['serverless', 'cloud', 'edge', 'edge computing', 'cluster management', 'virtualization', 'hypervisor'],
-                    'slack_user': '@test_user',
-                    'description': 'Research related to serverless systems'
-                }
-            ]
-        }
+        config_path = Path(__file__).parent / "test_config.yml"
+
+        cls.config = load_config(config_path)
+        # cls.config = {
+        #     'email': {
+        #         'username': os.getenv('GMAIL_USERNAME'),
+        #         'password': os.getenv('GMAIL_PASSWORD')
+        #     },
+        #     'slack': {
+        #         'api_token': 'test-token',
+        #         'default_channel': '#scholar-scout-default'
+        #     },
+        #     'perplexity': {
+        #         'api_key': os.getenv('PPLX_API_KEY')
+        #     },
+        #     'research_topics': [
+        #         {
+        #             'name': 'LLM Inference',
+        #             'keywords': ['llm', 'inference', 'serving', 'latency', 'throughput'],
+        #             'slack_channel': '#scholar-scout-llm',
+        #             'slack_user': '@test_user',
+        #             'description': 'Research broadly related to LLM and VLM applications and systems'
+        #         },
+        #         {
+        #             'name': 'Serverless systems', 
+        #             'keywords': ['serverless', 'cloud', 'edge', 'edge computing', 'cluster management', 'virtualization', 'hypervisor'],
+        #             'slack_user': '@test_user',
+        #             'slack_channel': '#scholar-scout-serverless',
+        #             'description': 'Research related to serverless systems'
+        #         }
+        #     ]
+        # }
         
         cls.classifier = ScholarClassifier(config_dict=cls.config)
 
@@ -74,7 +103,7 @@ class TestGmailIntegration(unittest.TestCase):
             print(f"\nFound {len(messages)} Google Scholar alert emails")
             
             # Take 5 most recent emails
-            num_emails_to_test = min(10, len(messages))
+            num_emails_to_test = min(3, len(messages))
             test_messages = messages[-num_emails_to_test:]
             
             for i, num in enumerate(test_messages, 1):

@@ -40,12 +40,20 @@ from bs4 import BeautifulSoup
 import html2text
 import urllib.parse
 
-@dataclass
+from slack_notifier import SlackNotifier
+
+@dataclass(frozen=True)
 class ResearchTopic:
     name: str
-    keywords: List[str]
+    keywords: Tuple[str, ...]
     slack_user: str
     description: str
+
+    def __init__(self, name: str, keywords: List[str], slack_user: str, description: str):
+        object.__setattr__(self, 'name', name)
+        object.__setattr__(self, 'keywords', tuple(keywords))
+        object.__setattr__(self, 'slack_user', slack_user)
+        object.__setattr__(self, 'description', description)
 
 @dataclass
 class Paper:
@@ -60,7 +68,7 @@ class ScholarClassifier:
         """Initialize with either a config file path or a config dictionary."""
         # Set up logging
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG)  # Set to DEBUG level
+        self.logger.setLevel(logging.INFO)  # Set to DEBUG level
         
         # Add a console handler if none exists
         if not self.logger.handlers:
@@ -89,10 +97,11 @@ class ScholarClassifier:
         )
         
         # Initialize Slack client
-        if slack_notifier:
-            self.slack_notifier = slack_notifier
-        else:
-            self.slack_client = WebClient(token=self.config['slack']['api_token'])
+        self.slack_notifier = SlackNotifier(
+            token=self.config['slack']['api_token'],
+            default_channel=self.config['slack']['default_channel'],
+            config=self.config
+        )
 
     def _init_research_topics(self):
         """Initialize research topics from configuration."""
@@ -292,10 +301,10 @@ class ScholarClassifier:
 
             self.logger.debug(f"Processing results: {results}")
         
-        for paper, matched_topics in results:
-            if matched_topics:  # Only notify if there are matches
-                self.slack_notifier.notify_matches(paper, matched_topics)
-
+        # Send all notifications at once
+        if self.slack_notifier:
+            self.slack_notifier.notify_matches(results)
+        
         return results
 
     def run(self, folder='"news &- papers/scholar"'):
@@ -477,6 +486,21 @@ CRITICAL RULES:
 The response must be valid JSON."""
 
         return prompt
+
+    def _load_research_topics(self):
+        """Load research topics from config."""
+        topics = []
+        for topic_config in self.config['research_topics']:
+            topic = ResearchTopic(
+                name=topic_config['name'],
+                description=topic_config['description'],
+                keywords=topic_config['keywords'],
+                slack_user=topic_config['slack_user'],
+                slack_channel=topic_config.get('slack_channel')
+            )
+            topics.append(topic)
+            self.logger.debug(f"Loaded topic from config: {topic}")
+        return topics
 
 if __name__ == "__main__":
     # Example configuration file structure (config.yml):

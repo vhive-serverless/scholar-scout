@@ -4,7 +4,7 @@ email:
 
 slack:
   api_token: ${SLACK_API_TOKEN}
-  default_channel: "#scholar-scout"
+  default_channel: "#scholar-scout-default"
 
 perplexity:
   api_key: ${PPLX_API_KEY}
@@ -13,9 +13,17 @@ research_topics:
   - name: "LLM Inference"
     keywords: ["llm", "inference", "serving", "latency", "throughput"]
     slack_user: "@test_user"
+    slack_channel: "#scholar-scout-llm"
     description: "Research broadly related to LLM and VLM applications and systems"
   
   - name: "Serverless systems"
     keywords: ["serverless", "cloud", "edge", "edge computing", "cluster management", "virtualization", "hypervisor"]
     slack_user: "@test_user"
+    slack_channel: "#scholar-scout-serverless"
     description: "Research related to serverless systems"
+
+#  - name: "Sustainable Computing"
+#     keywords: ["green computing", "energy efficiency", "carbon footprint"]
+#     slack_user: "@jim"
+#     slack_channel: "#scholar-scout-sustainable"
+#     description: "Research on reducing the environmental impact of computing systems, including energy efficiency and carbon footprint reduction"
