@@ -3,23 +3,23 @@ email:
   password: ${GMAIL_APP_PASSWORD}
 
 slack:
-  api_token: "xoxb-your-slack-token"
+  api_token: ${SLACK_API_TOKEN}
 
 perplexity:
   api_key: ${PPLX_API_KEY}
 
-research_topics:
-  - name: "Topic 1"
-    keywords: ["keyword1", "keyword2", "keyword3"]
-    slack_user: "@username1"
-    description: "Description of your first research topic"
-  
-  - name: "Topic 2"
-    keywords: ["keyword4", "keyword5", "keyword6"]
-    slack_user: "@username2"
-    description: "Description of your second research topic"
-  
-  - name: "Topic 3"
-    keywords: ["keyword7", "keyword8", "keyword9"]
-    slack_user: "@username3"
-    description: "Description of your third research topic" 
+    research_topics:
+      - name: "LLM Inference"
+        keywords: ["llm", "inference", "serving", "latency", "throughput"]
+        slack_user: "@bill"
+        description: "Research related to LLM inference serving systems, architectures, and applications, including latency optimization, throughput improvement, and deployment strategies"
+      
+      - name: "Serverless Computing"
+        keywords: ["serverless", "faas", "function-as-a-service", "cloud"]
+        slack_user: "@jenny"
+        description: "Research on serverless computing platforms, Function-as-a-Service (FaaS), and cloud-native architectures"
+      
+      - name: "Sustainable Computing"
+        keywords: ["green computing", "energy efficiency", "carbon footprint"]
+        slack_user: "@jim"
+        description: "Research on reducing the environmental impact of computing systems, including energy efficiency and carbon footprint reduction"

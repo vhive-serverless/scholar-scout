@@ -56,7 +56,7 @@ class Paper:
     venue: str = ""
 
 class ScholarClassifier:
-    def __init__(self, config_file=None, config_dict=None):
+    def __init__(self, config_file=None, config_dict=None, pplx_client=None, slack_notifier=None):
         """Initialize with either a config file path or a config dictionary."""
         # Set up logging
         self.logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class ScholarClassifier:
         # Add a console handler if none exists
         if not self.logger.handlers:
             console_handler = logging.StreamHandler()
-            console_handler.setLevel(logging.DEBUG)
+            console_handler.setLevel(logging.INFO)
             formatter = logging.Formatter('%(message)s')
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
@@ -89,7 +89,10 @@ class ScholarClassifier:
         )
         
         # Initialize Slack client
-        self.slack_client = WebClient(token=self.config['slack']['api_token'])
+        if slack_notifier:
+            self.slack_notifier = slack_notifier
+        else:
+            self.slack_client = WebClient(token=self.config['slack']['api_token'])
 
     def _init_research_topics(self):
         """Initialize research topics from configuration."""
@@ -134,13 +137,13 @@ class ScholarClassifier:
                         if actual_url:
                             paper_links[title] = actual_url
                     except Exception as e:
-                        print(f"Error extracting actual URL: {str(e)}")
+                        self.logger.error(f"Error extracting actual URL: {str(e)}")
                         continue
                     
             return paper_links
             
         except Exception as e:
-            print(f"Error extracting URLs: {str(e)}")
+            self.logger.error(f"Error extracting URLs: {str(e)}")
             return {}
 
     def _extract_paper_metadata(self, content):
@@ -230,28 +233,7 @@ class ScholarClassifier:
         
         results = []
         for paper in papers:
-            prompt = f"""Below is the EXACT content from a Google Scholar alert email. Extract ONLY the venue and relevant topics:
-
-Title: {paper['title']}
-Authors: {paper['authors']}
-Abstract: {paper['abstract']}
-
-Return a JSON object with ONLY these fields:
-{{
-    "venue": "use these rules:
-      - 'arXiv preprint' if author line has 'arXiv'
-      - 'Patent Application' if author line has 'Patent'
-      - text between dash and year for published papers
-      - 'NOT-FOUND' otherwise",
-    "relevant_topics": []  // From these topics:
-{self._format_research_topics()}
-}}
-
-CRITICAL RULES:
-1. Return ONLY the JSON object, NOTHING ELSE.
-2. Use venue rules exactly as specified
-3. Only include topics that clearly match the paper
-"""
+            prompt = self._generate_classification_prompt(paper)
 
             self.logger.debug(f"Generated prompt:\n{prompt}")
             try:
@@ -261,7 +243,7 @@ CRITICAL RULES:
                 )
                 
                 content = response.choices[0].message.content.strip()
-                self.logger.debug(f"LLM response:\n{content}")
+                self.logger.info(f"LLM response:\n{content}")
                 
                 # Clean up JSON from markdown if present
                 if content.startswith('```json'):
@@ -310,6 +292,10 @@ CRITICAL RULES:
 
             self.logger.debug(f"Processing results: {results}")
         
+        for paper, matched_topics in results:
+            if matched_topics:  # Only notify if there are matches
+                self.slack_notifier.notify_matches(paper, matched_topics)
+
         return results
 
     def run(self, folder='"news &- papers/scholar"'):
@@ -445,7 +431,7 @@ CRITICAL RULES:
             return '\n'.join(parts)
             
         except Exception as e:
-            print(f"Error parsing HTML: {str(e)}")
+            self.logger.error(f"Error parsing HTML: {str(e)}")
             # Fall back to basic HTML to text conversion
             h = html2text.HTML2Text()
             h.ignore_links = True
@@ -457,6 +443,40 @@ CRITICAL RULES:
         for topic in self.config['research_topics']:
             topics.append(f"- {topic['name']}: {topic['description']}")
         return "\n".join(topics)
+
+    def _generate_classification_prompt(self, paper):
+        """Generate prompt for paper classification."""
+        prompt = f"""Below is the EXACT content from a Google Scholar alert email. Extract ONLY the venue and relevant topics:
+
+Title: {paper['title']}
+Authors: {paper['authors']}
+Abstract: {paper['abstract']}
+
+Return a JSON object with ONLY these fields:
+{{
+    "venue": "use these rules:
+      - 'arXiv preprint' if author line has 'arXiv'
+      - 'Patent Application' if author line has 'Patent'
+      - text between dash and year for published papers
+      - 'NOT-FOUND' otherwise",
+    "relevant_topics": []  // ONLY choose from these exact topics, no others:
+{self._format_research_topics()}
+}}
+
+CRITICAL RULES:
+1. Return ONLY the JSON object, NOTHING ELSE
+2. Use venue rules exactly as specified
+3. For relevant_topics, ONLY include topics from the list above - do not create new topics
+4. For LLM/VLM papers:
+   - Include ANY paper that uses or studies language/vision-language models
+   - Include papers about LLM/VLM applications, systems, or benchmarks
+   - Include papers about model serving, deployment, or optimization
+   - When in doubt about LLM/VLM relevance, include it
+5. Leave relevant_topics as empty list if no topics match
+
+The response must be valid JSON."""
+
+        return prompt
 
 if __name__ == "__main__":
     # Example configuration file structure (config.yml):

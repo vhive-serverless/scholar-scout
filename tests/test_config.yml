@@ -4,6 +4,7 @@ email:
 
 slack:
   api_token: ${SLACK_API_TOKEN}
+  default_channel: "#scholar-scout"
 
 perplexity:
   api_key: ${PPLX_API_KEY}
@@ -12,7 +13,7 @@ research_topics:
   - name: "LLM Inference"
     keywords: ["llm", "inference", "serving", "latency", "throughput"]
     slack_user: "@test_user"
-    description: "Research related to serving and optimizing LLM inference"
+    description: "Research broadly related to LLM and VLM applications and systems"
   
   - name: "Serverless systems"
     keywords: ["serverless", "cloud", "edge", "edge computing", "cluster management", "virtualization", "hypervisor"]
