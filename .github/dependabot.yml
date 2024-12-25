@@ -1,0 +1,46 @@
+version: 2
+updates:
+  # Enable version updates for Python
+  - package-ecosystem: "pip"
+    # Look for requirements files in the root directory
+    directory: "/"
+    # Check for updates once a week
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    # Specify labels for pull requests
+    labels:
+      - "dependencies"
+      - "python"
+    # Set review requirements
+    reviewers:
+      - "JasonZhang517"
+    # Group all updates together
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+    # Limit the number of open pull requests
+    open-pull-requests-limit: 10
+    # Configure version update behavior
+    versioning-strategy: "auto"
+    # Allow up-to-date dependencies to be maintained
+    allow:
+      # Allow both direct and indirect updates for all packages
+      - dependency-type: "all"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "ustiugov"
+    groups:
+      actions:
+        patterns:
+          - "*"

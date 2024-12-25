@@ -1,0 +1,32 @@
+{
+    "version": "0.2",
+    "language": "en",
+    "words": [
+        "perplexity",
+        "pplx",
+        "python",
+        "pip",
+        "openai",
+        "httpcore",
+        "imap",
+        "venv",
+        "gmail",
+        "imaplib",
+        "serverless",
+        "arXiv",
+        "mdx"
+    ],
+    "ignorePaths": [
+        "node_modules",
+        "venv",
+        ".git",
+        "*.pyc",
+        "requirements.txt",
+        "__pycache__"
+    ],
+    "allowCompoundWords": true,
+    "ignoreRegExpList": [
+        "\\(.*\\)",
+        "```[\\s\\S]*?```"
+    ]
+} 

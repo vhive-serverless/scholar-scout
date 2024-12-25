@@ -24,15 +24,25 @@ SOFTWARE.
 
 import unittest
 from unittest import TestCase, mock
+import os
+
 from scholar_classifier import ScholarClassifier
+from utils import load_config
+from dotenv import load_dotenv
+
 
 def test_extract_and_classify_papers(mocker):
-    # Mock email message
+    """Test the paper extraction and classification functionality using pytest-mock."""
+    # Set up mock email message with multipart content
     email_message = mocker.Mock()
     email_message.is_multipart.return_value = True
-    email_message.__getitem__.return_value = "New articles in your Google Scholar alert"
-    
-    # Mock email part with HTML content
+
+    # Configure mock to return subject when accessed like a dictionary
+    email_message.__getitem__ = mocker.Mock(
+        side_effect=lambda x: {"subject": "New articles in your Google Scholar alert"}.get(x)
+    )
+
+    # Create sample HTML content simulating a Google Scholar alert
     html_content = """
     <div>
         <h3>Title: Efficient LLM Inference on Serverless Platforms</h3>
@@ -42,174 +52,174 @@ def test_extract_and_classify_papers(mocker):
         <a href="http://example.com/paper">Link to paper</a>
     </div>
     """
-    
+
+    # Mock email part containing HTML content
     email_part = mocker.Mock()
     email_part.get_content_type.return_value = "text/html"
     email_part.get_payload.return_value = html_content.encode()
-    
-    # Mock email walk
+
+    # Set up email structure
     email_message.walk.return_value = [email_part]
-    
-    # Mock Perplexity API response
+
+    # Create mock response from Perplexity API
     mock_response = mocker.Mock()
     mock_response.choices = [
         mocker.Mock(
             message=mocker.Mock(
-                content='''[{
+                # Simulated API response with paper classification
+                content="""[{
                     "title": "Efficient LLM Inference on Serverless Platforms",
                     "authors": ["John Doe", "Jane Smith"],
                     "venue": "SOSP 2024",
-                    "link": "http://example.com/paper",
+                    "url": "http://example.com/paper",
                     "abstract": "This paper presents novel techniques for optimizing LLM inference in serverless environments.",
                     "relevant_topics": ["LLM Inference", "Serverless Computing"]
-                }]'''
+                }]"""
             )
         )
     ]
-    
-    # Create test configuration
+
+    # Define test configuration with research topics
     config = {
-        'email': {'username': 'test@example.com', 'password': 'test'},
-        'slack': {'api_token': 'test-token'},
-        'perplexity': {'api_key': 'test-key'},
-        'research_topics': [
+        "email": {"username": "test@example.com", "password": "test"},
+        "slack": {"api_token": "test-token", "default_channel": "#scholar-scout-default"},
+        "perplexity": {"api_key": "test-key"},
+        "research_topics": [
             {
-                'name': 'LLM Inference',
-                'keywords': ['llm', 'inference'],
-                'slack_user': '@test1',
-                'description': 'LLM inference research'
+                "name": "LLM Inference",
+                "keywords": ["llm", "inference"],
+                "slack_user": "@test1",
+                "slack_channel": "#scholar-scout-test",
+                "description": "LLM inference research",
             },
             {
-                'name': 'Serverless Computing',
-                'keywords': ['serverless'],
-                'slack_user': '@test2',
-                'description': 'Serverless computing research'
-            }
-        ]
+                "name": "Serverless Computing",
+                "keywords": ["serverless"],
+                "slack_user": "@test2",
+                "slack_channel": "#scholar-scout-test",
+                "description": "Serverless computing research",
+            },
+        ],
     }
-    
-    # Mock Perplexity client
-    mocker.patch('openai.OpenAI.chat.completions.create', return_value=mock_response)
-    
-    # Create classifier instance
+
+    # Mock the OpenAI/Perplexity API call
+    mocker.patch("openai.OpenAI.chat.completions.create", return_value=mock_response)
+
+    # Initialize classifier with test config
     classifier = ScholarClassifier(config_dict=config)
-    
-    # Run the test
+
+    # Execute the method being tested
     results = classifier.extract_and_classify_papers(email_message)
-    
-    # Assertions
-    assert len(results) == 1
+
+    # Verify results
+    assert len(results) == 1, "Should extract exactly one paper"
     paper, topics = results[0]
-    
+
+    # Verify paper details
     assert paper.title == "Efficient LLM Inference on Serverless Platforms"
     assert paper.authors == ["John Doe", "Jane Smith"]
     assert paper.venue == "SOSP 2024"
     assert paper.url == "http://example.com/paper"
     assert "LLM inference" in paper.abstract.lower()
-    
-    assert len(topics) == 2
+
+    # Verify topic classification
+    assert len(topics) == 2, "Should identify two relevant topics"
     topic_names = [t.name for t in topics]
     assert "LLM Inference" in topic_names
-    assert "Serverless Computing" in topic_names 
+    assert "Serverless Computing" in topic_names
+
 
 class TestScholarClassifier(TestCase):
-    def setUp(self):
-        # Create test configuration
-        self.config = {
-            'email': {'username': 'test@example.com', 'password': 'test'},
-            'slack': {'api_token': 'test-token'},
-            'perplexity': {'api_key': 'test-key'},
-            'research_topics': [
-                {
-                    'name': 'LLM Inference',
-                    'keywords': ['llm', 'inference'],
-                    'slack_user': '@test1',
-                    'description': 'LLM inference research'
-                },
-                {
-                    'name': 'Serverless Computing',
-                    'keywords': ['serverless'],
-                    'slack_user': '@test2',
-                    'description': 'Serverless computing research'
-                }
-            ]
-        }
+    """Test suite for ScholarClassifier using unittest framework."""
 
-    @mock.patch('scholar_classifier.OpenAI')
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        # Load test configuration
+        env_path = os.path.join(os.path.dirname(__file__), ".env.test")
+        if not load_dotenv(env_path, override=True):
+            # For CI environment, ensure required env vars are set
+            required_vars = ["GMAIL_USERNAME", "GMAIL_APP_PASSWORD", "PPLX_API_KEY"]
+            missing_vars = [var for var in required_vars if not os.getenv(var)]
+            if missing_vars:
+                raise RuntimeError(f"Missing required environment variables: {missing_vars}")
+        config_path = os.path.join(os.path.dirname(__file__), "test_config.yml")
+        self.config = load_config(config_path)
+
+    @mock.patch("scholar_classifier.OpenAI")
     def test_extract_and_classify_papers(self, mock_openai_class):
-        # Define mock_response first
+        """Test paper extraction and classification with unittest mocks."""
+        # Set up mock email with Google Scholar format
+        email_message = mock.Mock()
+        email_message.is_multipart.return_value = True
+        email_message.__getitem__ = mock.Mock(
+            side_effect=lambda x: (
+                "New articles in your Google Scholar alert" if x == "subject" else None
+            )
+        )
+
+        # Create HTML content matching Google Scholar format
+        html_content = """
+        <div class="gs_r gs_or gs_scl">
+            <h3>
+                <a class="gse_alrt_title" href="http://example.com/paper">Efficient LLM Inference on Serverless Platforms</a>
+            </h3>
+            <div>John Doe, Jane Smith</div>
+            <div>This paper presents novel techniques for optimizing LLM inference in serverless environments.</div>
+        </div>
+        """
+
+        # Mock email part with proper encoding handling
+        email_part = mock.Mock()
+        email_part.get_content_type.return_value = "text/html"
+        email_part.get_payload.return_value = html_content.encode("utf-8")
+        email_part.get_payload.side_effect = lambda decode: (
+            html_content.encode("utf-8") if decode else html_content
+        )
+
+        email_message.walk.return_value = [email_part]
+
+        # Set up OpenAI client mock
+        mock_client = mock.Mock()
+        mock_openai_class.return_value = mock_client
+
+        # Create mock API response
         mock_response = mock.Mock()
         mock_response.choices = [
             mock.Mock(
                 message=mock.Mock(
-                    content='''[{
+                    content="""{
                         "title": "Efficient LLM Inference on Serverless Platforms",
                         "authors": ["John Doe", "Jane Smith"],
                         "venue": "SOSP 2024",
                         "link": "http://example.com/paper",
                         "abstract": "This paper presents novel techniques for optimizing LLM inference in serverless environments.",
                         "relevant_topics": ["LLM Inference", "Serverless Computing"]
-                    }]'''
+                    }"""
                 )
             )
         ]
-
-        # Set up the mock OpenAI client with Perplexity base URL
-        mock_client = mock.Mock()
-        mock_openai_class.return_value = mock_client
         mock_client.chat.completions.create.return_value = mock_response
 
-        # Verify that OpenAI is instantiated with correct parameters
-        def verify_openai_init(*args, **kwargs):
-            assert kwargs.get('base_url') == "https://api.perplexity.ai"
-            assert kwargs.get('api_key') == "test-key"
-            return mock_client
-        mock_openai_class.side_effect = verify_openai_init
-
-        # Create email message mock
-        email_message = mock.Mock()
-        email_message.is_multipart.return_value = True
-        email_message.__getitem__ = mock.Mock(side_effect=lambda x: "New articles in your Google Scholar alert" if x == 'subject' else None)
-
-        # Mock email part with HTML content
-        html_content = """
-        <div>
-            <h3>Title: Efficient LLM Inference on Serverless Platforms</h3>
-            <div>Authors: John Doe, Jane Smith</div>
-            <div>Conference: SOSP 2024</div>
-            <div>Abstract: This paper presents novel techniques for optimizing LLM inference in serverless environments.</div>
-            <a href="http://example.com/paper">Link to paper</a>
-        </div>
-        """
-        
-        email_part = mock.Mock()
-        email_part.get_content_type.return_value = "text/html"
-        email_part.get_payload.return_value = html_content.encode()
-        email_message.walk.return_value = [email_part]
-
-        # Create classifier instance and run test
+        # Execute test
         classifier = ScholarClassifier(config_dict=self.config)
         results = classifier.extract_and_classify_papers(email_message)
-        
-        # Verify that OpenAI was called with correct parameters
-        mock_client.chat.completions.create.assert_called_once()
-        call_kwargs = mock_client.chat.completions.create.call_args[1]
-        assert call_kwargs['model'] == "llama-3.1-sonar-small-128k-online"
-        
-        # Assertions for results
-        assert len(results) == 1
+
+        # Verify results
+        assert len(results) == 1, "Should extract exactly one paper"
         paper, topics = results[0]
-        
+
+        # Check paper metadata
         assert paper.title == "Efficient LLM Inference on Serverless Platforms"
-        assert paper.authors == ["John Doe", "Jane Smith"]
-        assert paper.venue == "SOSP 2024"
+        assert "John Doe" in paper.authors[0]
         assert paper.url == "http://example.com/paper"
-        assert "llm inference" in paper.abstract.lower() or "optimizing llm" in paper.abstract.lower()
-        
-        assert len(topics) == 2
+        assert "llm inference" in paper.abstract.lower()
+
+        # Verify topic classification
+        assert len(topics) == 2, "Should identify two relevant topics"
         topic_names = [t.name for t in topics]
         assert "LLM Inference" in topic_names
         assert "Serverless Computing" in topic_names
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,14 @@ ENV/
 *.swo
 .DS_Store
 
+# Testing
+.coverage
+.tox/
+.pytest_cache/
+htmlcov/
+
 # Project specific
+.last_weekly_update
 config.yml
 *.log
 scholar_notifications.log
@@ -58,3 +65,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST 
+fix_lint.sh
+
+# Environment files
+.env
+.env.test
