@@ -22,12 +22,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+import logging
+from typing import List, Optional
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-import logging
-from typing import List, Dict, Tuple, Optional
-from collections import defaultdict
+
+from config import ResearchTopic
 from paper import Paper
+
 
 class SlackNotifier:
     def __init__(self, token: str, default_channel: str, config: dict):
@@ -35,60 +38,89 @@ class SlackNotifier:
         self.default_channel = default_channel
         self.config = config
         self.logger = logging.getLogger(__name__)
-        
+
         # Set the logging level for slack_sdk to INFO to reduce verbosity
-        logging.getLogger('slack_sdk').setLevel(logging.INFO)
+        logging.getLogger("slack_sdk").setLevel(logging.INFO)
 
-    def notify_matches(self, results: List[Tuple[Paper, List[str]]]) -> None:
-        """Send notifications for papers based on their matched topics."""
-        self.logger.debug(f"\n=== Starting notifications for {len(results)} papers ===")
-        
-        # Track unmatched papers to send to default channel
-        unmatched_papers = []
-        
-        # Group papers by topic and channel
-        topic_papers = {}  # Dict[str, List[Paper]]
-        
-        for paper, topics in results:
-            self.logger.debug(f"\nProcessing paper: {paper.title}")
-            self.logger.debug(f"Matched topics: {topics}")
-            
-            if not topics:
-                self.logger.debug("No topics matched - adding to unmatched papers")
-                unmatched_papers.append(paper)
-            else:
-                # Add paper to each matched topic's papers list
-                for topic in topics:
-                    if topic not in topic_papers:
-                        topic_papers[topic] = []
-                    topic_papers[topic].append(paper)
-        
-        # Send matched papers to their topic channels
-        for topic, papers in topic_papers.items():
-            channel = self.config['topics'][topic]['channel']  # Get channel from config
-            self.logger.debug(f"\nSending {len(papers)} papers to channel {channel}")
-            self._send_papers_to_channel(channel, topic, papers)
-        
-        # Send unmatched papers to default channel
-        if unmatched_papers:
-            self.logger.debug(f"\nSending {len(unmatched_papers)} unmatched papers to default channel")
-            self._send_papers_to_channel(self.default_channel, None, unmatched_papers)
+    def notify_matches(self, paper_results):
+        """Notify about matching papers to their specific channels."""
+        if not paper_results:
+            return
 
-    def _send_papers_to_channel(self, channel: str, topic: Optional[str], papers: List[Paper]) -> None:
+        for paper, matched_topics in paper_results:
+            for topic in matched_topics:
+                # Get channel from topic, fall back to default if not specified
+                channel = getattr(topic, "slack_channel", self.default_channel)
+                users_mention = " ".join(getattr(topic, "slack_users", []))
+
+                message = (
+                    f"{users_mention}\n"  # Mention all users at once
+                    f"New paper matching topic: {topic.name}\n"
+                    f"Title: {paper.title}\n"
+                    f"Authors: {', '.join(paper.authors)}\n"
+                    f"Venue: {paper.venue}\n"
+                    f"URL: {paper.url}\n"
+                    f"Abstract: {paper.abstract[:500]}..."
+                )
+
+                try:
+                    # Send to topic-specific channel
+                    self.client.chat_postMessage(channel=channel, text=message, unfurl_links=True)
+                    self.logger.info(
+                        f"Notification sent to channel {channel} for topic {topic.name}"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to send notification to {channel}: {str(e)}")
+
+    def _send_papers_to_channel(
+        self, channel: str, topic: Optional[str], papers: List[Paper]
+    ) -> None:
         """Send papers to a specific channel."""
         if topic:
             message = f"*{topic}:*\n"
         else:
             message = "*Unmatched Papers:*\n"
-        
+
         message += "\n".join(f"• {paper.title}" for paper in papers)
-        
+
         try:
-            self.client.chat_postMessage(
-                channel=channel,
-                text=message,
-                unfurl_links=False
-            )
+            self.client.chat_postMessage(channel=channel, text=message, unfurl_links=False)
             self.logger.info(f"Sent {len(papers)} papers to {channel}")
+        except SlackApiError as e:
+            self.logger.error(f"Failed to send message to {channel}: {e.response['error']}")
+
+    def _format_paper_message(self, paper: Paper, topic: ResearchTopic) -> str:
+        """Format a paper notification message for Slack."""
+        message = [
+            f"*New paper matching topic: {topic.name}*",
+            f"*Title:* {paper.title}",
+            f"*Authors:* {', '.join(paper.authors)}",
+        ]
+
+        if paper.venue:
+            message.append(f"*Venue:* {paper.venue}")
+
+        if paper.url:
+            message.append(f"*URL:* {paper.url}")
+
+        if paper.abstract:
+            # Truncate abstract if it's too long
+            abstract = paper.abstract[:500] + "..." if len(paper.abstract) > 500 else paper.abstract
+            message.append(f"*Abstract:* {abstract}")
+
+        # Join all parts with newlines
+        return "\n".join(message)
+
+    def send_message(self, channel: str, message: str, user: str = None) -> None:
+        """Send a message to a Slack channel."""
+        try:
+            # Add user mention if provided
+            if user:
+                message = f"{user}\n{message}"
+
+            self.client.chat_postMessage(
+                channel=channel, text=message, unfurl_links=False  # Prevent link previews
+            )
+            self.logger.info(f"Sent message to {channel}")
         except SlackApiError as e:
             self.logger.error(f"Failed to send message to {channel}: {e.response['error']}")

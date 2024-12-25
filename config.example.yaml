@@ -1,0 +1,52 @@
+---
+email:
+  username: ${GMAIL_USERNAME}
+  password: ${GMAIL_APP_PASSWORD}
+  folder: "Google Scholar Alerts"
+
+slack:
+  api_token: ${SLACK_API_TOKEN}
+  default_channel: "scholar-scout-default"
+  channel_topics:
+    scholar-scout-llm:
+      - "LLM Inference"
+    scholar-scout-serverless:
+      - "Serverless Computing"
+
+
+perplexity:
+  api_key: ${PPLX_API_KEY}
+
+research_topics:
+  - name: "LLM Inference"
+    keywords: ["llm", "inference", "serving", "latency", "throughput"]
+    slack_users:
+      - "@Ruiqi Lai"
+      - "@Yixin Zhang"
+      - "@Hongrui Liu"
+      - "@Siyang Shao"
+      - "@Colin Hong"
+    slack_channel: "#systems-for-ai"
+    description: >-
+      Research related to LLM inference serving systems, architectures, and 
+      applications, including latency optimization, throughput improvement, 
+      and deployment strategies"
+
+  - name: "Serverless Computing"
+    keywords: ["serverless", "faas", "function-as-a-service", "cloud"]
+    slack_users:
+      - "@Leonid Kondrashov"
+      - "@Park JooYoung"
+      - "@Junke Mao"
+    slack_channel: "#serverless-systems"
+    description: >-
+      Research on serverless computing platforms, Function-as-a-Service (FaaS), 
+      and cloud-native architectures
+
+  - name: "Sustainable Computing"
+    keywords: ["green computing", "energy efficiency", "carbon footprint"]
+    slack_users:
+      - "@jim"
+    description: >-
+      Research on reducing the environmental impact of computing systems, 
+      including energy efficiency and carbon footprint reduction

@@ -1,10 +1,15 @@
+---
 email:
   username: ${GMAIL_USERNAME}
-  password: ${GMAIL_PASSWORD}
+  password: ${GMAIL_APP_PASSWORD}
+  folder: "Google Scholar Alerts"
 
 slack:
   api_token: ${SLACK_API_TOKEN}
-  default_channel: "#scholar-scout-default"
+  default_channel: "#scholar-scout-test"
+  channel_topics:
+    scholar-scout-llm: ["LLM Inference"]
+    scholar-scout-serverless: ["Serverless Computing"]
 
 perplexity:
   api_key: ${PPLX_API_KEY}
@@ -12,18 +17,16 @@ perplexity:
 research_topics:
   - name: "LLM Inference"
     keywords: ["llm", "inference", "serving", "latency", "throughput"]
-    slack_user: "@test_user"
+    slack_users:
+      - "@test1"
+      - "@test2"
     slack_channel: "#scholar-scout-llm"
-    description: "Research broadly related to LLM and VLM applications and systems"
-  
-  - name: "Serverless systems"
-    keywords: ["serverless", "cloud", "edge", "edge computing", "cluster management", "virtualization", "hypervisor"]
-    slack_user: "@test_user"
-    slack_channel: "#scholar-scout-serverless"
-    description: "Research related to serverless systems"
+    description: "Test LLM inference research"
 
-#  - name: "Sustainable Computing"
-#     keywords: ["green computing", "energy efficiency", "carbon footprint"]
-#     slack_user: "@jim"
-#     slack_channel: "#scholar-scout-sustainable"
-#     description: "Research on reducing the environmental impact of computing systems, including energy efficiency and carbon footprint reduction"
+  - name: "Serverless Computing"
+    keywords: ["serverless", "faas", "function-as-a-service", "cloud"]
+    slack_users:
+      - "@test3"
+      - "@test4"
+    slack_channel: "#scholar-scout-serverless"
+    description: "Test serverless computing research"

@@ -1,0 +1,41 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-mock
+        
+    - name: Create .env file
+      run: |
+        echo "GMAIL_USERNAME=${{ secrets.GMAIL_USERNAME }}" >> .env
+        echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
+        echo "SLACK_API_TOKEN=${{ secrets.SLACK_API_TOKEN }}" >> .env
+        echo "PPLX_API_KEY=${{ secrets.PPLX_API_KEY }}" >> .env
+        
+    - name: Run tests
+      env:
+        GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        PPLX_API_KEY: ${{ secrets.PPLX_API_KEY }}
+        SLACK_API_TOKEN: ${{ secrets.SLACK_API_TOKEN }}
+      run: |
+        python -m unittest tests/test_integration.py -v 
