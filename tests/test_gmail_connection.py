@@ -95,6 +95,7 @@ class TestGmailConnection(unittest.TestCase):
                 print("\nEmail details:")
                 print(f"Subject: {email_message['subject']}")
                 print(f"From: {email_message['from']}")
+                print(f"Date: {email_message['date']}")
                 
                 # Extract papers
                 papers = self.classifier.extract_papers_from_email(email_message)

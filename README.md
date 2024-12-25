@@ -30,10 +30,27 @@ Run the main script:
 python scholar_classifier.py
 ```
 
-Run tests:
+## Testing
+
+### Integration Tests
+To run the integration tests:
 ```bash
-python -m unittest tests/test_gmail_connection.py -v
+python -m unittest tests/test_integration.py -v
 ```
+
+The integration tests require a `test_config.yml` file in the `tests/` directory with your Gmail credentials and settings. Example structure:
+
+```yaml
+email:
+  username: your.email@gmail.com
+  password: your-app-specific-password  # Gmail App Password, not your regular password
+  folder: "news &- papers/scholar"      # IMAP folder where Scholar alerts are stored
+```
+
+Note: 
+- You'll need to [create an App Password](https://support.google.com/accounts/answer/185833) for Gmail
+- The tests expect Google Scholar alert emails from December 23, 2024 in the specified folder
+- Make sure your Scholar alerts are being properly filtered to the specified folder
 
 ## License
 MIT

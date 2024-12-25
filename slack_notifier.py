@@ -35,6 +35,9 @@ class SlackNotifier:
         self.default_channel = default_channel
         self.config = config
         self.logger = logging.getLogger(__name__)
+        
+        # Set the logging level for slack_sdk to INFO to reduce verbosity
+        logging.getLogger('slack_sdk').setLevel(logging.INFO)
 
     def notify_matches(self, results: List[Tuple[Paper, List[str]]]) -> None:
         """Send notifications for papers based on their matched topics."""

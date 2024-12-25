@@ -42,6 +42,10 @@ import urllib.parse
 
 from slack_notifier import SlackNotifier
 
+# Set logging levels for specific libraries
+logging.getLogger('openai').setLevel(logging.INFO)
+logging.getLogger('httpcore').setLevel(logging.INFO)
+
 @dataclass(frozen=True)
 class ResearchTopic:
     name: str
@@ -68,7 +72,7 @@ class ScholarClassifier:
         """Initialize with either a config file path or a config dictionary."""
         # Set up logging
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)  # Set to DEBUG level
+        self.logger.setLevel(logging.DEBUG)  # Set to DEBUG level
         
         # Add a console handler if none exists
         if not self.logger.handlers:

@@ -37,7 +37,7 @@ class TestGmailIntegration(unittest.TestCase):
         )
         
         # Enable debug logging for specific components
-        logging.getLogger('slack_notifier').setLevel(logging.DEBUG)
+        logging.getLogger('slack_notifier').setLevel(logging.INFO)
         logging.getLogger('scholar_classifier').setLevel(logging.INFO)
         
         # Add a stream handler if messages aren't showing
@@ -95,20 +95,22 @@ class TestGmailIntegration(unittest.TestCase):
             status, _ = mail.select(folder)
             self.assertEqual(status, 'OK', f"Failed to select folder: {folder}")
             
+            # Search for Scholar alerts specifically from Dec 23, 2024
             _, message_numbers = mail.search(None, 
-                'FROM "scholaralerts-noreply@google.com" SUBJECT "new articles"')
+                'FROM "scholaralerts-noreply@google.com" '
+                'SUBJECT "new articles" '
+                'SENTON "23-Dec-2024"')
             
             messages = message_numbers[0].split()
             self.assertTrue(len(messages) > 0, "No Google Scholar alert emails found")
-            print(f"\nFound {len(messages)} Google Scholar alert emails")
+            print(f"\nFound {len(messages)} Google Scholar alert emails from Dec 23, 2024")
             
-            # Take 5 most recent emails
-            num_emails_to_test = min(3, len(messages))
-            test_messages = messages[-num_emails_to_test:]
+            # Use messages directly since they're already filtered
+            test_messages = messages
             
             for i, num in enumerate(test_messages, 1):
                 try:
-                    print(f"\n=== Processing Email {i}/{num_emails_to_test} ===")
+                    print(f"\n=== Processing Email {i}/{len(test_messages)} ===")
                     _, msg_data = mail.fetch(num, '(BODY.PEEK[])')
                     email_message = email.message_from_bytes(msg_data[0][1])
                     
