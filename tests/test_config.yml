@@ -1,6 +1,6 @@
 email:
   username: ${GMAIL_USERNAME}
-  password: ${GMAIL_PASSWORD}
+  password: ${GMAIL_APP_PASSWORD}
 
 slack:
   api_token: ${SLACK_API_TOKEN}
@@ -16,7 +16,7 @@ research_topics:
     slack_channel: "#scholar-scout-llm"
     description: "Research broadly related to LLM and VLM applications and systems"
   
-  - name: "Serverless systems"
+  - name: "Serverless Computing"
     keywords: ["serverless", "cloud", "edge", "edge computing", "cluster management", "virtualization", "hypervisor"]
     slack_user: "@test_user"
     slack_channel: "#scholar-scout-serverless"
