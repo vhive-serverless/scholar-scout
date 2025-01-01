@@ -63,7 +63,7 @@ class TestGmailIntegration(unittest.TestCase):
             # for dmitrii's account
             # folder = '"news &- papers/scholar"'
             # for hyscale's account
-            folder = '"Inbox"' 
+            folder = 'Inbox'
             status, _ = mail.select(folder)
             self.assertEqual(status, "OK", f"Failed to select folder: {folder}")
 

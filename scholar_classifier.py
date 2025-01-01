@@ -500,7 +500,7 @@ class ScholarClassifier:
 
         return " ".join(query_parts)
 
-    #def run(self, folder='"news &- papers/scholar"'):
+    # def run(self, folder='"news &- papers/scholar"'):
     def run(self, folder='"Inbox"'):
         """Main execution loop."""
         try:
