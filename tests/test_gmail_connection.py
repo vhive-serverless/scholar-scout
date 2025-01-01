@@ -84,7 +84,10 @@ class TestGmailConnection(unittest.TestCase):
             print(f"Password length: {len(self.config['email']['password'])} chars")
 
             # Select the folder
-            folder = '"news &- papers/scholar"'
+            # for dmitrii's account
+            # folder = '"news &- papers/scholar"'
+            # for hyscale's account
+            folder = '"Inbox"'
             print(f"\nSelecting folder: {folder}")
             mail.select(folder)
 

@@ -60,7 +60,10 @@ class TestGmailIntegration(unittest.TestCase):
         try:
             mail = self.classifier.connect_to_gmail()
 
-            folder = '"news &- papers/scholar"'
+            # for dmitrii's account
+            # folder = '"news &- papers/scholar"'
+            # for hyscale's account
+            folder = '"Inbox"' 
             status, _ = mail.select(folder)
             self.assertEqual(status, "OK", f"Failed to select folder: {folder}")
 
