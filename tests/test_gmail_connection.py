@@ -85,9 +85,9 @@ class TestGmailConnection(unittest.TestCase):
 
             # Select the folder
             # for dmitrii's account
-            # folder = '"news &- papers/scholar"'
+            folder = '"news &- papers/scholar"'
             # for hyscale's account
-            folder = '"Inbox"'
+            # folder = '"Inbox"'
             print(f"\nSelecting folder: {folder}")
             mail.select(folder)
 
