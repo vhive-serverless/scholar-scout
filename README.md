@@ -20,7 +20,7 @@ A tool to monitor Google Scholar alerts and classify research papers using Perpl
 Create a `.env` file with:
 ```
 GMAIL_USERNAME=your.email@gmail.com
-GMAIL_PASSWORD=your-app-specific-password
+GMAIL_APP_PASSWORD=your-app-specific-password
 PPLX_API_KEY=your-perplexity-api-key
 ```
 

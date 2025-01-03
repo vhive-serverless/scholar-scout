@@ -1,0 +1,16 @@
+[tool.black]
+# Maximum line length before wrapping
+line-length = 100
+
+# Python versions to target for compatibility
+target-version = ['py39', 'py310', 'py311', 'py312']
+
+# Pattern for files to include in formatting
+include = '\.pyi?$'
+
+# Exclude patterns (using regex)
+extend-exclude = '''
+# A regex preceded with ^/ will apply only to files and directories
+# in the root of the project.
+^/tests/
+''' 
