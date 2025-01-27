@@ -24,7 +24,7 @@ jobs:
 
     - name: Create config files from template
       run: |
-        cp config.example.yaml config.yml
+        cp config.example.yml config.yml
         
     - name: Run Scholar Classifier
       env:
