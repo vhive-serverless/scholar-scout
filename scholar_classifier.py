@@ -303,7 +303,7 @@ class ScholarClassifier:
             self.logger.debug(f"Generated prompt:\n{prompt}")
             try:
                 response = self.pplx_client.chat.completions.create(
-                    model="llama-3.1-sonar-small-128k-online",
+                    model="sonar",
                     messages=[{"role": "user", "content": prompt}],
                 )
 
