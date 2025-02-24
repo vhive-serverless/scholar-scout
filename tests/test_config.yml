@@ -13,6 +13,7 @@ slack:
 
 perplexity:
   api_key: ${PPLX_API_KEY}
+  model: "sonar-pro"
 
 research_topics:
   - name: "LLM Inference"
