@@ -30,6 +30,7 @@ import logging
 import os
 import urllib.parse
 from string import Template
+from datetime import datetime, timedelta
 
 import html2text
 import yaml
@@ -79,7 +80,7 @@ class ScholarClassifier:
     - Sending weekly updates to system channels
     """
 
-    def __init__(self, config_file=None, config_dict=None, pplx_client=None, slack_notifier=None):
+    def __init__(self, config_file=None, config_dict=None, pplx_client=None, slack_notifier=None, debug_mode=False):
         """
         Initialize the classifier with configuration and clients.
 
@@ -88,6 +89,7 @@ class ScholarClassifier:
             config_dict: Configuration dictionary (optional)
             pplx_client: Pre-configured Perplexity client (optional)
             slack_notifier: Pre-configured Slack notifier (optional)
+            debug_mode: If True, disable Slack notifications (default: False)
 
         Raises:
             ValueError: If neither config_file nor config_dict is provided
@@ -131,6 +133,11 @@ class ScholarClassifier:
         # Add sets to track processed papers
         self._processed_titles = set()
         self._processed_urls = set()
+
+        # Add debug mode flag
+        self.debug_mode = debug_mode
+        if self.debug_mode:
+            self.logger.info("Running in debug mode - Slack notifications disabled")
 
     def _init_research_topics(self):
         """Initialize research topics from configuration."""
@@ -430,33 +437,34 @@ class ScholarClassifier:
 
     def _build_email_search_query(self):
         """Build IMAP search query based on search criteria."""
-        from datetime import datetime, timedelta
+        # Load search criteria
         with open("search_criteria.yml", "r") as f:
             criteria = yaml.safe_load(f)["email_filter"]
-
-        # Base query parts
-        query_parts = [f'FROM "{criteria["from"]}"', f'SUBJECT "{criteria["subject"]}"']
-
-        # Add time window
-        if criteria["time_window"]:
-
-            # Parse time window
-            amount = int(criteria["time_window"][:-1])
-            unit = criteria["time_window"][-1]
-
-            if unit == "D":
-                delta = timedelta(days=amount)
-            elif unit == "W":
-                delta = timedelta(weeks=amount)
-            elif unit == "M":
-                delta = timedelta(days=amount * 30)
-
-            # Calculate date range
-            since_date = datetime.now() - delta
-            date_str = since_date.strftime("%d-%b-%Y")
-            query_parts.append(f'SINCE "{date_str}"')
-
-        return " ".join(query_parts)
+        # Parse time window
+        time_window = criteria["time_window"]
+        amount = int(time_window[:-1])  # get number
+        unit = time_window[-1]          # get unit (D/W/M)
+        # Calculate date range
+        end_date = datetime.now()
+        if unit == "D":
+            delta = timedelta(days=amount)
+        elif unit == "W":
+            delta = timedelta(weeks=amount)
+        elif unit == "M":
+            delta = timedelta(days=amount * 30)  # approximate
+        else:
+            raise ValueError(f"Invalid time window unit: {unit}")
+        start_date = end_date - delta
+        # Format dates for IMAP query
+        since_date = start_date.strftime("%d-%b-%Y")
+        before_date = end_date.strftime("%d-%b-%Y")
+        # Build query with date restriction
+        query = f'(FROM "{criteria["from"]}" SUBJECT "{criteria["subject"]}" SINCE "{since_date}" BEFORE "{before_date}")'
+        # Log the query for debugging
+        self.logger.info(f"Using search query: {query}")
+        self.logger.info(f"Time window: {time_window}")
+        self.logger.info(f"Date range: {since_date} to {before_date}")
+        return query
 
     def run(self, folder=None):
         """Main execution loop."""
@@ -474,6 +482,7 @@ class ScholarClassifier:
             if status != "OK":
                 self.logger.error(f"Failed to select folder {folder_name}: {folder_info}")
                 return
+
             # Build and execute search query
             search_query = self._build_email_search_query()
             self.logger.info(f"Using search query: {search_query}")
@@ -484,23 +493,46 @@ class ScholarClassifier:
 
             self.logger.info(f"Searching in folder: {folder}")
 
-            processed_papers = False
+            total_papers = 0
+            processed_emails = 0
+            self.logger.info("\n=== Starting Paper Processing ===")
             for num in message_numbers[0].split():
+                processed_emails += 1
                 _, msg_data = mail.fetch(num, "(RFC822)")
                 email_body = msg_data[0][1]
                 email_message = email.message_from_bytes(email_body)
+                self.logger.info(f"\nProcessing email {processed_emails}: {email_message['subject']}")
 
                 # Extract and classify papers in one step
                 paper_results = self.extract_and_classify_papers(email_message)
 
                 # Send notifications using slack_notifier directly
                 if paper_results:
-                    processed_papers = True
-                    if self.slack_notifier:
+                    total_papers += len(paper_results)
+                    if self.slack_notifier and not self.debug_mode:  # Only send if not in debug mode
                         self.slack_notifier.notify_matches(paper_results)
+                    else:
+                        # Print paper results to console instead
+                        self.logger.info(f"\n=== Paper Results (Email {processed_emails}) ===")
+                        for i, (paper, topics) in enumerate(paper_results, 1):
+                            self.logger.info(
+                                f"\nPaper {total_papers - len(paper_results) + i}/{total_papers} "
+                                f"(email {i}/{len(paper_results)})"
+                            )
+                            self.logger.info(f"Title: {paper.title}")
+                            self.logger.info(f"Authors: {paper.authors}")
+                            self.logger.info(f"Venue: {paper.venue}")
+                            self.logger.info(f"URL: {paper.url}")
+                            self.logger.info(f"Matched Topics: {[t.name for t in topics]}")
+                            self.logger.info(f"Abstract: {paper.abstract[:200]}...")
+                            self.logger.info("-" * 80)
 
-            # Send weekly update if papers were processed
-            if processed_papers:
+            self.logger.info("\n=== Processing Complete ===")
+            self.logger.info(f"Processed {processed_emails} emails")
+            self.logger.info(f"Total papers extracted: {total_papers}")
+
+            # Skip weekly update in debug mode
+            if total_papers > 0 and not self.debug_mode:
                 self.send_weekly_update_notification()
 
             mail.logout()
@@ -674,6 +706,9 @@ The response must be valid JSON with ALL required fields."""
 
     def send_weekly_update_notification(self):
         """Send notifications to systems channels about weekly paper updates."""
+        if self.debug_mode:
+            self.logger.info("Debug mode: Skipping weekly update notification")
+            return
 
         def format_topic_summary(papers_by_topic):
             summary = []
@@ -734,7 +769,7 @@ if __name__ == "__main__":
 
     # Load config and print relevant parts (without sensitive data)
     logger.info("Loading configuration...")
-    classifier = ScholarClassifier(config_file="config.yml")
+    classifier = ScholarClassifier(config_file="config.yml", debug_mode=True)  # Enable debug mode
 
     # Print config structure (without passwords)
     safe_config = classifier.config.copy()
