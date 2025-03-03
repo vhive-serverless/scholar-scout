@@ -23,10 +23,10 @@ from config import load_config
 from scholar_classifier import ScholarClassifier
 
 
-class TestGmailIntegration(unittest.TestCase):
+class TestIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        """Set up test environment."""
+        """Set up test environment for full pipeline integration testing."""
         # Setup detailed logging
         logging.basicConfig(
             level=logging.DEBUG,
@@ -63,6 +63,7 @@ class TestGmailIntegration(unittest.TestCase):
     def test_end_to_end_pipeline(self):
         """Test the entire pipeline from Gmail connection to paper classification."""
         try:
+            # Use the main program's methods
             mail = self.classifier.connect_to_gmail()
 
             # for dmitrii's account
@@ -83,7 +84,7 @@ class TestGmailIntegration(unittest.TestCase):
 
             messages = message_numbers[0].split()
             self.assertTrue(len(messages) > 0, "No Google Scholar alert emails found")
-            print(f"\nFound {len(messages)} Google Scholar alert emails from Dec 23, 2024")
+            print(f"\nFound {len(messages)} Google Scholar alert emails from Jan 05, 2025")
 
             # Use messages directly since they're already filtered
             test_messages = messages

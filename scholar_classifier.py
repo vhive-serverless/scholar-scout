@@ -279,7 +279,7 @@ class ScholarClassifier:
             self.logger.info("No papers found in email")
             return []
 
-        # Filter out duplicates before processing
+        # Filter out duplicates and patents before processing
         filtered_papers = []
         for paper in papers:
             title = paper.title.lower().strip()
@@ -293,6 +293,14 @@ class ScholarClassifier:
                 self.logger.info(f"Skipping duplicate paper (by URL): {paper.title}")
                 continue
 
+            # Skip if it's a patent
+            if any(word in title.lower() for word in ['patent', 'apparatus', 'method and system']):
+                self.logger.info(f"Skipping patent: {paper.title}")
+                continue
+            if 'patent' in paper.authors.lower():
+                self.logger.info(f"Skipping patent (from authors): {paper.title}")
+                continue
+
             # Add to tracking sets
             self._processed_titles.add(title)
             if url:
@@ -301,7 +309,7 @@ class ScholarClassifier:
             filtered_papers.append(paper)
 
         self.logger.info(
-            f"Found {len(papers)} papers, {len(filtered_papers)} after duplicate filtering"
+            f"Found {len(papers)} papers, {len(filtered_papers)} after filtering out duplicates and patents"
         )
 
         results = []
@@ -760,6 +768,18 @@ The response must be valid JSON with ALL required fields."""
 
 
 if __name__ == "__main__":
+    import argparse
+
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Run the Scholar Classifier')
+    parser.add_argument(
+        '--debug',
+        action='store_true',  # This makes it a flag that's either True or False
+        default=False,        # Default value is False
+        help='Run in debug mode (disable Slack notifications)'
+    )
+    args = parser.parse_args()
+
     # Set up logging
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger(__name__)
@@ -767,9 +787,12 @@ if __name__ == "__main__":
     # Load environment variables
     load_dotenv()
 
+    # Log debug mode status
+    logger.info(f"Debug mode: {'enabled' if args.debug else 'disabled'}")
+
     # Load config and print relevant parts (without sensitive data)
     logger.info("Loading configuration...")
-    classifier = ScholarClassifier(config_file="config.yml", debug_mode=True)  # Enable debug mode
+    classifier = ScholarClassifier(config_file="config.yml", debug_mode=args.debug)
 
     # Print config structure (without passwords)
     safe_config = classifier.config.copy()
