@@ -79,7 +79,10 @@ class TestGmailConnection(unittest.TestCase):
             mail.select(folder_name)
             # Search for emails from Google Scholar with 'new articles' in subject
             _, message_numbers = mail.search(
-                None, '(FROM "scholaralerts-noreply@google.com" SUBJECT "new articles")'
+                None,
+                'FROM "scholaralerts-noreply@google.com" '
+                'SUBJECT "new articles" '
+                'SENTON "05-Jan-2025"',
             )
 
             messages = message_numbers[0].split()
