@@ -220,6 +220,225 @@ class TestScholarClassifier(TestCase):
         assert "LLM Inference" in topic_names
         assert "Serverless Computing" in topic_names
 
+    def test_should_process_email_with_chinese_subject(self):
+        """Test email filtering with Chinese subject lines."""
+        # Create a mock email message with Chinese subject
+        email_message = mock.Mock()
+        email_message.get.return_value = "新文章 - Google Scholar 学术搜索"
+        
+        # Create classifier with test config that includes Chinese subjects
+        config = {
+            "email": {"username": "test@example.com", "password": "test"},
+            "slack": {"api_token": "test-token", "default_channel": "#test"},
+            "perplexity": {"api_key": "test-key"},
+            "research_topics": []
+        }
+        
+        classifier = ScholarClassifier(config_dict=config)
+        
+        # Mock the search_criteria.yml file to include Chinese subjects
+        mock_criteria = {
+            'email_filter': {
+                'from': 'scholaralerts-noreply@google.com',
+                'subject': ['new articles', '新文章', 'new results', '新结果'],
+                'time_window': '7D'
+            }
+        }
+        
+        # Mock the file reading and YAML loading for _should_process_email
+        mock_file_content = '''email_filter:
+  from: "scholaralerts-noreply@google.com"
+  subject:
+    - "new articles"
+    - "新文章"
+    - "new results"
+    - "新结果"
+  time_window: "7D"'''
+        
+        with mock.patch('builtins.open', mock.mock_open(read_data=mock_file_content)):
+            with mock.patch('yaml.safe_load', return_value=mock_criteria):
+                # Test that Chinese subject should be processed
+                result = classifier._should_process_email(email_message)
+                self.assertTrue(result, "Chinese subject should be processed")
+
+    def test_should_process_email_with_unrelated_subject(self):
+        """Test email filtering with unrelated subject lines."""
+        # Create a mock email message with unrelated subject
+        email_message = mock.Mock()
+        email_message.get.return_value = "Your weekly newsletter"
+        
+        config = {
+            "email": {"username": "test@example.com", "password": "test"},
+            "slack": {"api_token": "test-token", "default_channel": "#test"},
+            "perplexity": {"api_key": "test-key"},
+            "research_topics": []
+        }
+        
+        classifier = ScholarClassifier(config_dict=config)
+        
+        mock_criteria = {
+            'email_filter': {
+                'from': 'scholaralerts-noreply@google.com',
+                'subject': ['new articles', '新文章', 'new results', '新结果'],
+                'time_window': '7D'
+            }
+        }
+        
+        # Mock the file reading and YAML loading for _should_process_email
+        mock_file_content = '''email_filter:
+  from: "scholaralerts-noreply@google.com"
+  subject:
+    - "new articles"
+    - "新文章"
+    - "new results"
+    - "新结果"
+  time_window: "7D"'''
+        
+        with mock.patch('builtins.open', mock.mock_open(read_data=mock_file_content)):
+            with mock.patch('yaml.safe_load', return_value=mock_criteria):
+                # Test that unrelated subject should NOT be processed
+                result = classifier._should_process_email(email_message)
+                self.assertFalse(result, "Unrelated subject should NOT be processed")
+
+    def test_should_process_email_with_empty_subject(self):
+        """Test email filtering with empty subject."""
+        # Create a mock email message with empty subject
+        email_message = mock.Mock()
+        email_message.get.return_value = ""
+        
+        config = {
+            "email": {"username": "test@example.com", "password": "test"},
+            "slack": {"api_token": "test-token", "default_channel": "#test"},
+            "perplexity": {"api_key": "test-key"},
+            "research_topics": []
+        }
+        
+        classifier = ScholarClassifier(config_dict=config)
+        
+        mock_criteria = {
+            'email_filter': {
+                'from': 'scholaralerts-noreply@google.com',
+                'subject': ['new articles', '新文章', 'new results', '新结果'],
+                'time_window': '7D'
+            }
+        }
+        
+        # Mock the file reading and YAML loading for _should_process_email
+        mock_file_content = '''email_filter:
+  from: "scholaralerts-noreply@google.com"
+  subject:
+    - "new articles"
+    - "新文章"
+    - "new results"
+    - "新结果"
+  time_window: "7D"'''
+        
+        with mock.patch('builtins.open', mock.mock_open(read_data=mock_file_content)):
+            with mock.patch('yaml.safe_load', return_value=mock_criteria):
+                # Test that empty subject should NOT be processed
+                result = classifier._should_process_email(email_message)
+                self.assertFalse(result, "Empty subject should NOT be processed")
+
+    def test_build_email_search_query_with_chinese_subjects(self):
+        """Test IMAP search query building with Chinese subjects."""
+        config = {
+            "email": {"username": "test@example.com", "password": "test"},
+            "slack": {"api_token": "test-token", "default_channel": "#test"},
+            "perplexity": {"api_key": "test-key"},
+            "research_topics": []
+        }
+        
+        classifier = ScholarClassifier(config_dict=config)
+        
+        # Mock the search_criteria.yml file
+        mock_criteria = {
+            'email_filter': {
+                'from': 'scholaralerts-noreply@google.com',
+                'subject': ['new articles', '新文章', 'new results', '新结果'],
+                'time_window': '7D'
+            }
+        }
+        
+        with mock.patch('builtins.open', mock.mock_open(read_data='email_filter:\n  from: "scholaralerts-noreply@google.com"\n  subject:\n    - "new articles"\n    - "新文章"\n    - "new results"\n    - "新结果"\n  time_window: "7D"')):
+            with mock.patch('yaml.safe_load', return_value=mock_criteria):
+                from_query, since_query, subjects = classifier._build_email_search_query()
+                
+                # Verify FROM query
+                self.assertEqual(from_query, 'FROM "scholaralerts-noreply@google.com"')
+                
+                # Verify SINCE query (should contain a date)
+                self.assertIn('SINCE', since_query)
+                # Check that it contains a valid date format (DD-MMM-YYYY)
+                import re
+                date_pattern = r'\d{2}-[A-Za-z]{3}-\d{4}'
+                self.assertIsNotNone(re.search(date_pattern, since_query), "Should contain valid date format")
+                
+                # Verify subjects list contains both English and Chinese
+                self.assertIn('new articles', subjects)
+                self.assertIn('new results', subjects)
+                
+                # Verify Chinese subjects are properly encoded (not in original form)
+                chinese_subjects = [s for s in subjects if 'SUBJECT' in s]
+                self.assertEqual(len(chinese_subjects), 2, "Should have 2 encoded Chinese subjects")
+                
+                # Verify the encoded subjects are not the original Chinese text
+                self.assertNotIn('新文章', subjects, "Chinese subjects should be encoded, not in original form")
+                self.assertNotIn('新结果', subjects, "Chinese subjects should be encoded, not in original form")
+
+    def test_mixed_language_subject_processing(self):
+        """Test processing of emails with mixed language subjects."""
+        # Test various subject combinations
+        test_cases = [
+            ("新文章 - New articles in your Google Scholar alert", True),
+            ("New articles - 新文章 in your Google Scholar alert", True),
+            ("Google Scholar: 新结果 for your search", True),
+            ("Weekly newsletter from Google", False),
+            ("新文章", True),
+            ("new articles", True),
+            ("", False),
+            (None, False)
+        ]
+        
+        config = {
+            "email": {"username": "test@example.com", "password": "test"},
+            "slack": {"api_token": "test-token", "default_channel": "#test"},
+            "perplexity": {"api_key": "test-key"},
+            "research_topics": []
+        }
+        
+        classifier = ScholarClassifier(config_dict=config)
+        
+        mock_criteria = {
+            'email_filter': {
+                'from': 'scholaralerts-noreply@google.com',
+                'subject': ['new articles', '新文章', 'new results', '新结果'],
+                'time_window': '7D'
+            }
+        }
+        
+        # Mock the file reading and YAML loading for _should_process_email
+        mock_file_content = '''email_filter:
+  from: "scholaralerts-noreply@google.com"
+  subject:
+    - "new articles"
+    - "新文章"
+    - "new results"
+    - "新结果"
+  time_window: "7D"'''
+        
+        with mock.patch('builtins.open', mock.mock_open(read_data=mock_file_content)):
+            with mock.patch('yaml.safe_load', return_value=mock_criteria):
+                for subject, expected_result in test_cases:
+                    email_message = mock.Mock()
+                    email_message.get.return_value = subject
+                    
+                    result = classifier._should_process_email(email_message)
+                    self.assertEqual(
+                        result,
+                        expected_result,
+                        f"Subject '{subject}' should {'be' if expected_result else 'NOT be'} processed"
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

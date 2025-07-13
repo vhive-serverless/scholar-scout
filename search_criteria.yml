@@ -1,8 +1,8 @@
 email_filter:
   from: "scholaralerts-noreply@google.com"
-  subject: "new articles"
-  # Options for time_window:
-  # - "1D" for past day
-  # - "1W" for past week
-  # - "1M" for past month
-  time_window: "1W"
+  subject: 
+    - "new articles"
+    - "新文章"
+    - "new results" 
+    - "新结果"
+  time_window: "7D"  # 7 days
