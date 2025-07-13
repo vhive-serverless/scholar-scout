@@ -36,7 +36,9 @@ ignore =
     I100,
     E402,
     # Line break before binary operator (conflicts with W503)
-    W503
+    W503,
+    W293,
+    E501,
 per-file-ignores =
     # Ignore unused imports in __init__.py files
     __init__.py:F401

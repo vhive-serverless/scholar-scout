@@ -23,6 +23,7 @@ SOFTWARE.
 """
 
 # Standard library imports
+import base64
 import email
 import imaplib
 import json
@@ -30,7 +31,7 @@ import logging
 import os
 import urllib.parse
 from string import Template
-from datetime import datetime, timedelta
+
 
 import html2text
 import yaml
@@ -444,35 +445,56 @@ class ScholarClassifier:
         return results
 
     def _build_email_search_query(self):
-        """Build IMAP search query based on search criteria."""
+        """Build IMAP search query parts for multi-language subject support."""
+        def encode_subject_for_imap(subject):
+            """Encode subject for IMAP search using Base64 if it contains non-ASCII characters."""
+            try:
+                # Try to encode as ASCII - if it works, return as is
+                subject.encode('ascii')
+                return subject
+            except UnicodeEncodeError:
+                # If it contains non-ASCII characters, encode as Base64
+                encoded = base64.b64encode(subject.encode('utf-8')).decode('ascii')
+                return f'SUBJECT {encoded}'
+        with open('search_criteria.yml', 'r') as f:
+            criteria = yaml.safe_load(f)['email_filter']
+
+        from_query = f'FROM "{criteria["from"]}"'
+        # 时间窗口处理
+        since_query = ""
+        if criteria['time_window']:
+            from datetime import datetime, timedelta
+            amount = int(criteria['time_window'][:-1])
+            unit = criteria['time_window'][-1]
+            if unit == 'D':
+                delta = timedelta(days=amount)
+            elif unit == 'W':
+                delta = timedelta(weeks=amount)
+            elif unit == 'M':
+                delta = timedelta(days=amount * 30)
+            since_date = datetime.now() - delta
+            date_str = since_date.strftime("%d-%b-%Y")
+            since_query = f'SINCE "{date_str}"'
+
+        subjects = criteria.get("subject", [])
+        encoded_subjects = [encode_subject_for_imap(subj) for subj in subjects]
+        return from_query, since_query, encoded_subjects
+
+    def _should_process_email(self, email_message):
+        """Check if email should be processed based on subject criteria."""
+        subject = email_message.get('subject', '')
+        if not subject:
+            return False
         # Load search criteria
-        with open("search_criteria.yml", "r") as f:
-            criteria = yaml.safe_load(f)["email_filter"]
-        # Parse time window
-        time_window = criteria["time_window"]
-        amount = int(time_window[:-1])  # get number
-        unit = time_window[-1]          # get unit (D/W/M)
-        # Calculate date range
-        end_date = datetime.now()
-        if unit == "D":
-            delta = timedelta(days=amount)
-        elif unit == "W":
-            delta = timedelta(weeks=amount)
-        elif unit == "M":
-            delta = timedelta(days=amount * 30)  # approximate
-        else:
-            raise ValueError(f"Invalid time window unit: {unit}")
-        start_date = end_date - delta
-        # Format dates for IMAP query
-        since_date = start_date.strftime("%d-%b-%Y")
-        before_date = end_date.strftime("%d-%b-%Y")
-        # Build query with date restriction
-        query = f'(FROM "{criteria["from"]}" SUBJECT "{criteria["subject"]}" SINCE "{since_date}" BEFORE "{before_date}")'
-        # Log the query for debugging
-        self.logger.info(f"Using search query: {query}")
-        self.logger.info(f"Time window: {time_window}")
-        self.logger.info(f"Date range: {since_date} to {before_date}")
-        return query
+        with open('search_criteria.yml', 'r') as f:
+            criteria = yaml.safe_load(f)['email_filter']
+        target_subjects = criteria.get("subject", [])
+        # Check if subject matches any of our target subjects
+        for target_subject in target_subjects:
+            # Handle both ASCII and Chinese subjects
+            if target_subject in subject:
+                return True
+        return False
 
     def run(self, folder=None):
         """Main execution loop."""
@@ -492,23 +514,71 @@ class ScholarClassifier:
                 return
 
             # Build and execute search query
-            search_query = self._build_email_search_query()
-            self.logger.info(f"Using search query: {search_query}")
-            status, message_numbers = mail.search(None, search_query)
-            if status != "OK":
-                self.logger.error(f"Search failed: {message_numbers}")
-                return
+            from_query, since_query, subjects = self._build_email_search_query()
+            all_message_numbers = set()
+            # Try a simpler approach: search by FROM and SINCE first, then filter by subject
+            base_search_terms = []
+            if from_query:
+                base_search_terms.append(from_query)
+            if since_query:
+                base_search_terms.append(since_query)
+            if base_search_terms:
+                base_criteria = ' '.join(base_search_terms)
+                self.logger.info(f"Using base search query: {base_criteria}")
+                status, message_numbers = mail.search(None, base_criteria)
+                if status == "OK":
+                    all_message_numbers.update(message_numbers[0].split())
+                else:
+                    self.logger.error(f"Base search failed: {message_numbers}")
+            # If no base search or it failed, try individual subject searches
+            if not all_message_numbers:
+                for subj in subjects:
+                    # For Chinese subjects, we'll need to handle them differently
+                    if 'SUBJECT' in subj:  # This is our encoded format
+                        # Extract the encoded part
+                        encoded_part = subj.replace('SUBJECT ', '')
+                        try:
+                            # Decode to get original subject
+                            original_subject = base64.b64decode(encoded_part.encode('ascii')).decode('utf-8')
+                            self.logger.info(f"Trying to search for encoded subject: {original_subject}")
+                            # For now, skip Chinese subjects in IMAP search
+                            # We'll filter them later when processing emails
+                            continue
+                        except Exception as e:
+                            self.logger.error(f"Failed to decode subject: {e}")
+                            continue
+                    else:
+                        # Regular ASCII subject
+                        search_terms = []
+                        if from_query:
+                            search_terms.append(from_query)
+                        if since_query:
+                            search_terms.append(since_query)
+                        search_terms.append(f'SUBJECT "{subj}"')
+                        search_criteria = ' '.join(search_terms)
+                        self.logger.info(f"Using search query: {search_criteria}")
+                        status, message_numbers = mail.search(None, search_criteria)
+                        if status == "OK":
+                            all_message_numbers.update(message_numbers[0].split())
+                        else:
+                            self.logger.error(f"Search failed for subject {subj}: {message_numbers}")
 
+            # 后续处理 all_message_numbers
             self.logger.info(f"Searching in folder: {folder}")
+            self.logger.info(f"Found {len(all_message_numbers)} messages to process")
 
             total_papers = 0
             processed_emails = 0
             self.logger.info("\n=== Starting Paper Processing ===")
-            for num in message_numbers[0].split():
-                processed_emails += 1
+            for num in all_message_numbers:
                 _, msg_data = mail.fetch(num, "(RFC822)")
                 email_body = msg_data[0][1]
                 email_message = email.message_from_bytes(email_body)
+                # Check if this email should be processed based on subject
+                if not self._should_process_email(email_message):
+                    self.logger.info(f"Skipping email with subject: {email_message.get('subject', 'Unknown')}")
+                    continue
+                processed_emails += 1
                 self.logger.info(f"\nProcessing email {processed_emails}: {email_message['subject']}")
 
                 # Extract and classify papers in one step
